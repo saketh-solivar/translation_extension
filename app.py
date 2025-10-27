@@ -1,0 +1,325 @@
+from fastapi import FastAPI, HTTPException, Request, File, UploadFile, Form, Query
+from sheets import get_prompts_from_sheet, get_questions_from_sheet, check_session_exists,update_response_in_sheet,get_last_answered_index,get_total_prompts,update_logs, get_sheet_id_from_master,get_additional_questions_from_sheet, check_user_details_exist ,update_response_count_in_sheet,get_instruction_from_sheet
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles 
+from google.cloud import storage
+import os
+from pydub import AudioSegment
+from mail import send_email_with_links
+import time
+from user_agents import parse
+import datetime
+import pandas as pd
+
+app = FastAPI()
+
+
+# Replace with your Google Sheets ID and new unified sheet
+MASTER_SPREADSHEET_ID = '1BvHGCQH2ii0Aj-gQCi0sRIbygdIyrWYhfbkcVDQc88s'
+ALL_QUESTIONS_SHEET = 'AllQuestions'
+RESPONSE_RANGE = 'URLs!A1:ZZ'
+INSTRUCTIONS_RANGE = 'Initialpage!B1:B'  # If still needed
+
+# GCP Storage Bucket Name
+BUCKET_NAME = "ckuserrecordings"
+# Initialize Google Cloud Storage Client
+storage_client = storage.Client(project="quiz-generator-464201")
+
+class SpreadsheetConfig:
+    def __init__(self):
+        self.SPREADSHEET_ID = None
+
+    def set_spreadsheet_id(self, sheet_id):
+        self.SPREADSHEET_ID = sheet_id
+
+    def get_spreadsheet_id(self):
+        return self.SPREADSHEET_ID
+
+# Create a single instance of the class
+spreadsheet_config = SpreadsheetConfig()
+
+def get_device_type(user_agent):
+    # user_agent = parse(user_agent_string)
+    
+    if user_agent.is_mobile:
+        return "Mobile"
+    elif user_agent.is_tablet:
+        return "Tablet"
+    elif user_agent.is_pc:
+        return "PC"  # Ensure "PC" is correctly classified
+    else:
+        return "Other" 
+
+@app.get("/", response_class=HTMLResponse)
+async def serve_home(request: Request):
+    project_code = request.query_params.get("pc")
+    session_id = request.query_params.get("id")
+    user_agent_str = request.headers.get("user-agent", "")
+    user_agent = parse(user_agent_str)
+    print(user_agent)
+    
+    details = {
+        "os": user_agent.os.family,  # e.g., Windows, macOS, Linux
+        "os_version": user_agent.os.version_string,  # e.g., 10, 11, Ventura
+        "browser": user_agent.browser.family,  # e.g., Chrome, Firefox, Safari
+        "browser_version": user_agent.browser.version_string,  # e.g., 110.0.0
+        "device": get_device_type(user_agent),  # e.g., iPhone, Desktop
+    }
+    print(details)
+    if not project_code or not session_id:
+        return HTMLResponse(content="<h2>⚠️ Incorrect URL. Please check your URL</h2>", status_code=400)
+    
+    SPREADSHEET_ID = get_sheet_id_from_master(MASTER_SPREADSHEET_ID, project_code)
+    spreadsheet_config.set_spreadsheet_id(SPREADSHEET_ID)
+    print(f"Updated Global SHEET_ID: {spreadsheet_config.get_spreadsheet_id()}")
+
+    if not SPREADSHEET_ID:
+        return HTMLResponse(content="<h2>⚠️ Project not found. Please check your project code.</h2>", status_code=400)
+    print(f"Updated Global SHEET_ID: {SPREADSHEET_ID}")  # Debugging print
+
+    # Check if OS is iOS and browser is Firefox
+    if details["os"] == "iOS" and "Firefox" in details["browser"] :
+        return HTMLResponse(
+            content="<script>alert('⚠️ Browser not supported. Please use Chrome or Safari.');</script>",
+            status_code=400
+        )
+    timestamp = datetime.datetime.utcnow().isoformat()  # Get current UTC timestamp
+    ip = f"User accessed home page from {request.client.host}"
+    print(ip)
+    # Call update_logs function to store the log
+    log_response = update_logs(SPREADSHEET_ID,session_id, timestamp, details,{request.client.host})
+
+    print("Inside Home Function")
+    if not project_code or not session_id:
+        return HTMLResponse(content="<h2>⚠️ Incorrect URL. Please check your URL</h2>", status_code=400)
+
+    if not check_session_exists(SPREADSHEET_ID, "URLs", session_id):
+        return HTMLResponse(content="<h2>⚠️ Incorrect URL. Please check your URL</h2>", status_code=400)  
+
+    resume_state = get_last_answered_index(SPREADSHEET_ID, "URLs", session_id)
+    print("LAI",resume_state)
+    if resume_state["phase"] == "complete":
+        from sheets import update_status_to_responded
+        update_status_to_responded(SPREADSHEET_ID, session_id)
+        return HTMLResponse(content="<h2>✅ You have answered all prompts and questions. Thank you!</h2>")
+
+    user_details_exist = check_user_details_exist(SPREADSHEET_ID, session_id)
+
+    with open("templates/prompts.html", "r") as file:
+        html_content = file.read()
+
+    js_state_injection = f"""
+    let currentPromptIndex = {resume_state["prompt_index"]};
+    let isPromptPhase = {str(resume_state["phase"] in ["prompt", "aqg"]).lower()};
+    let isAdditionalPhase = {str(resume_state["phase"] == "aqg").lower()};
+    let additionalIndex = {resume_state.get("additional_index", 0)};
+     let userDetailsAlreadyExist = {str(user_details_exist).lower()};
+    """
+
+    html_content = html_content.replace("// {{INJECT_START_STATE}}", js_state_injection)
+    return HTMLResponse(content=html_content)
+
+
+
+@app.get("/prompts_and_questions")
+def get_prompts(project_code: str = Query(...)):
+    try:
+        print("In prompts function pc =", project_code)
+        SPREADSHEET_ID = get_sheet_id_from_master(MASTER_SPREADSHEET_ID, project_code)
+        if not SPREADSHEET_ID:
+            raise HTTPException(status_code=400, detail="Spreadsheet ID not set.")
+        print("SPREADSHEET_ID is:", SPREADSHEET_ID)
+        prompts = [q["Questions"] for q in get_prompts_from_sheet(SPREADSHEET_ID, ALL_QUESTIONS_SHEET) if "Questions" in q]
+        questions = [q["Questions"] for q in get_questions_from_sheet(SPREADSHEET_ID, ALL_QUESTIONS_SHEET) if "Questions" in q]
+        # For additional questions, keep the mapping by PromptID, but only the HTML
+        additional_questions_raw = get_additional_questions_from_sheet(SPREADSHEET_ID, ALL_QUESTIONS_SHEET)
+        additional_questions = {pid: [q["Questions"] for q in qs if "Questions" in q] for pid, qs in additional_questions_raw.items()}
+        # If you still need instructions from a separate sheet, keep this line:
+            
+        instruction_row = get_instruction_from_sheet(SPREADSHEET_ID, ALL_QUESTIONS_SHEET)
+        instructions = instruction_row["Questions"] if instruction_row and "Questions" in instruction_row else ""
+        return {"prompts": prompts, "questions": questions, "instructions": instructions, "additional_questions": additional_questions}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/save_audio")
+async def save_audio(
+    file: UploadFile = File(...),
+    project_code: str = Form(...),
+    session_id: str = Form(...),
+    prompt_index: int = Form(...),
+    file_extension: str = Form(...),
+    is_prompt: bool = Form(False),  # Add is_prompt to differentiate prompts and questions.  Default to False (question)
+    is_additional: bool = Form(False),
+    additional_index: int = Form(...),
+):
+    """
+    Save the uploaded audio file to GCP Storage.
+    """
+    try:
+        print("In save_Audio function")
+        print("Audio type is", file_extension)
+        print(f"Is prompt: {is_prompt}")
+        SPREADSHEET_ID = spreadsheet_config.get_spreadsheet_id()
+        if not SPREADSHEET_ID:
+            raise HTTPException(status_code=400, detail="Spreadsheet ID not set.")
+        print("SPREADSHEET_ID is:",SPREADSHEET_ID)
+
+        # Define the file path in GCP Storage, now different for prompts and questions
+        if is_prompt:
+            file_path = f"{project_code}/{session_id}/prompts/presponse{prompt_index}.{file_extension}"
+            response_type = "prompt"
+        elif is_additional:
+            file_path = f"{project_code}/{session_id}/additionalquestion/aqgresponse-P{prompt_index}_{additional_index}.{file_extension}"
+            response_type = "aqg"
+        else:
+            file_path = f"{project_code}/{session_id}/questions/qresponse{prompt_index}.{file_extension}"
+            response_type = "question"
+
+            
+        print(f"Uploading to: {file_path}")
+
+        # Upload to GCP Storage
+        bucket = storage_client.bucket(BUCKET_NAME)
+        blob = bucket.blob(file_path)
+        blob.upload_from_file(file.file, content_type=f"audio/{file_extension}")
+
+        # Verify if the file exists in GCP Storage
+        if blob.exists(storage_client):
+            print(f"File successfully uploaded and exists at {file_path}")
+        else:
+            print(f"File upload failed: {file_path}")
+            return {"error": "File upload failed"}
+
+        # Generate GCS URL
+        response_url = f"https://storage.cloud.google.com/{BUCKET_NAME}/{file_path}"
+        print("response url", response_url)
+        updated = update_response_in_sheet(
+            spreadsheet_id=SPREADSHEET_ID,
+            sheet_name="URLs",
+            session_id=session_id,
+            response_type=response_type,
+            prompt_index=prompt_index,
+            new_value=response_url,
+            additional_index=additional_index if is_additional else None
+        )
+
+        print("value of updated", updated)
+        if not updated:
+            print("Session ID not found in the sheet")
+            return {"error": "Session ID not found in the sheet"}
+
+        update_response_count_in_sheet(spreadsheet_id=SPREADSHEET_ID, session_id=session_id)
+        
+        # ✅ NEW: Check if all are complete and update status immediately
+        from sheets import get_last_answered_index, update_status_to_responded
+        resume_state = get_last_answered_index(SPREADSHEET_ID, "URLs", session_id)
+        print("🔎 Resume state after update:", resume_state)
+        if resume_state.get("phase") == "complete":
+            update_status_to_responded(SPREADSHEET_ID, session_id)
+            print(f"✅ Status instantly updated for session {session_id}")
+        else :
+            print("Responses Not Completed for session {session_id}")
+
+        return {"message": "Audio uploaded successfully", "response_url": response_url}
+
+
+    except Exception as e:
+        print(str(e))
+        return {"error": str(e)}
+
+@app.delete("/erase_audio")
+async def erase_audio(
+    project_code: str = Query(...),
+    session_id: str = Query(...),
+    prompt_index: int = Query(...),
+    is_prompt: bool = Query(...),
+    is_additional: bool = Query(False),
+    additional_index: int = Query(0),
+):
+    """
+    Deletes the last recorded audio response from the cloud bucket and removes its entry from the spreadsheet.
+    """
+    try:
+        print("In erase_audio")
+        print(f"is_prompt: {is_prompt}, is_additional: {is_additional}, prompt_index: {prompt_index}, additional_index: {additional_index}")
+        
+        SPREADSHEET_ID = get_sheet_id_from_master(MASTER_SPREADSHEET_ID, project_code)
+        spreadsheet_config.set_spreadsheet_id(SPREADSHEET_ID)
+        if not SPREADSHEET_ID:
+            raise HTTPException(status_code=400, detail="Spreadsheet ID not set.")
+
+        # Determine response type
+        if is_additional:
+            response_type = "aqg"
+        elif is_prompt:
+            response_type = "prompt"
+        else:
+            response_type = "question"
+
+        # Erase from sheet
+        updated = update_response_in_sheet(
+            spreadsheet_id=SPREADSHEET_ID,
+            sheet_name="URLs",
+            session_id=session_id,
+            response_type=response_type,
+            prompt_index=prompt_index,
+            new_value=" ",
+            additional_index=additional_index if is_additional else None
+        )
+        # Now update the response count
+        update_response_count_in_sheet(SPREADSHEET_ID, session_id)
+        if not updated:
+            return {"error": "Session ID not found in the sheet"}
+        
+        return {"message": "Audio response erased successfully!"}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+@app.post("/update_user_details")
+async def update_user_details(request: Request):
+    """
+    Updates user name and mobile number in the URLs sheet
+    """
+    try:
+        data = await request.json()
+        project_code = data.get("project_code")
+        session_id = data.get("session_id")
+        name = data.get("name")
+        mobile = data.get("mobile")
+
+        if not all([project_code, session_id, name, mobile]):
+            raise HTTPException(status_code=400, detail="Missing required fields")
+
+        SPREADSHEET_ID = get_sheet_id_from_master(MASTER_SPREADSHEET_ID, project_code)
+        if not SPREADSHEET_ID:
+            raise HTTPException(status_code=400, detail="Project not found")
+
+        from sheets import update_user_details_in_sheet
+        success = update_user_details_in_sheet(SPREADSHEET_ID, session_id, name, mobile)
+        
+        if success:
+            return {"message": "User details updated successfully"}
+        else:
+            raise HTTPException(status_code=404, detail="Session not found")
+
+    except Exception as e:
+        print(f"Error updating user details: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+
+
+@app.post("/send_mail")
+async def send_mail( project_code: str = Form(...),session_id: str = Form(...),):
+    
+    SPREADSHEET_ID = spreadsheet_config.get_spreadsheet_id()
+    if not SPREADSHEET_ID:
+        raise HTTPException(status_code=400, detail="Spreadsheet ID not set.")
+    print("SPREADSHEET_ID is:",SPREADSHEET_ID)
+    send_email_with_links(project_code, session_id, SPREADSHEET_ID)
+
+    return
+
+
