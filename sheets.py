@@ -67,8 +67,6 @@ def get_sheets_service():
     service = build('sheets', 'v4', credentials=creds)
     return service
 
-# Fetch prompts from Google Sheets
-
 # Unified function to fetch all questions from the new AllQuestions sheet
 def get_all_questions_from_sheet(spreadsheet_id, sheet_name="AllQuestions"):
     service = get_sheets_service()
@@ -80,6 +78,7 @@ def get_all_questions_from_sheet(spreadsheet_id, sheet_name="AllQuestions"):
     headers = values[0]
     data = [dict(zip(headers, row + [""] * (len(headers) - len(row)))) for row in values[1:]]
     return data
+    
 def get_instruction_from_sheet(spreadsheet_id, sheet_name="AllQuestions"):
     """
     Returns the first row with Type == 'Instruction', or None if not found.
@@ -94,8 +93,6 @@ def get_instruction_from_sheet(spreadsheet_id, sheet_name="AllQuestions"):
 def get_prompts_from_sheet(spreadsheet_id, sheet_name="AllQuestions"):
     all_questions = get_all_questions_from_sheet(spreadsheet_id, sheet_name)
     return [q for q in all_questions if q.get("Type", "").strip().lower() == "prompt"]
-
-# Fetch followup-questions from Google Sheets
 
 # Fetch only follow-up questions (Type == 'FollowUp')
 def get_questions_from_sheet(spreadsheet_id, sheet_name="AllQuestions"):
@@ -206,106 +203,6 @@ def update_status_to_responded(spreadsheet_id, session_id):
     # Subtract 1 to exclude the header row (assuming first row is headers)
     return max(0, len(rows))
 
-
-def update_user_details_in_sheet(spreadsheet_id, session_id, name, mobile):
-    """
-    Updates the Name and Mobile columns for a specific session in the URLs sheet
-    """
-    try:
-        service = get_sheets_service()
-        sheet = service.spreadsheets()
-        result = sheet.values().get(spreadsheetId=spreadsheet_id, range="URLs").execute()
-        rows = result.get("values", [])
-        if not rows:
-            return False
-
-        headers = rows[0]
-        try:
-            session_col_index = headers.index("Session Key")
-            name_col_index = headers.index("Name")
-            mobile_col_index = headers.index("Mobile")
-        except ValueError as e:
-            print(f"Required column not found: {e}")
-            return False
-
-        # Find the row for the session_id
-        session_row_index = None
-        for idx, row in enumerate(rows[1:], start=2):  # Google Sheets is 1-indexed, skip header
-            if len(row) > session_col_index and row[session_col_index] == session_id:
-                session_row_index = idx
-                break
-
-        if session_row_index is None:
-            print("Session ID not found")
-            return False
-
-        # Update both Name and Mobile columns
-        # Convert column indices to letters
-        name_col_letter = convert_to_column_letter(name_col_index)
-        mobile_col_letter = convert_to_column_letter(mobile_col_index)
-        
-        name_range = f"URLs!{name_col_letter}{session_row_index}"
-        mobile_range = f"URLs!{mobile_col_letter}{session_row_index}"
-
-        # Update name
-        sheet.values().update(
-            spreadsheetId=spreadsheet_id,
-            range=name_range,
-            valueInputOption="RAW",
-            body={"values": [[name]]}
-        ).execute()
-
-        # Update mobile
-        sheet.values().update(
-            spreadsheetId=spreadsheet_id,
-            range=mobile_range,
-            valueInputOption="RAW",
-            body={"values": [[mobile]]}
-        ).execute()
-
-        print(f"User details updated for session {session_id}: Name={name}, Mobile={mobile}")
-        return True
-
-    except Exception as e:
-        print(f"Error updating user details: {e}")
-        return False
-
-def check_user_details_exist(spreadsheet_id, session_id):
-    """
-    Checks if user details (Name and Mobile) already exist for a session
-    Returns True if both Name and Mobile are filled, False otherwise
-    """
-    try:
-        service = get_sheets_service()
-        sheet = service.spreadsheets()
-        result = sheet.values().get(spreadsheetId=spreadsheet_id, range="URLs").execute()
-        rows = result.get("values", [])
-        if not rows:
-            return False
-
-        headers = rows[0]
-        try:
-            session_col_index = headers.index("Session Key")
-            name_col_index = headers.index("Name")
-            mobile_col_index = headers.index("Mobile")
-        except ValueError:
-            # If Name or Mobile columns don't exist, return False
-            return False
-
-        # Find the row for the session_id
-        for idx, row in enumerate(rows[1:], start=2):
-            if len(row) > session_col_index and row[session_col_index] == session_id:
-                # Check if both name and mobile are filled
-                name_value = row[name_col_index] if len(row) > name_col_index else ""
-                mobile_value = row[mobile_col_index] if len(row) > mobile_col_index else ""
-                
-                return bool(name_value.strip()) and bool(mobile_value.strip())
-        
-        return False
-
-    except Exception as e:
-        print(f"Error checking user details: {e}")
-        return False
 def update_response_count_in_sheet(spreadsheet_id, session_id):
     """
     Counts and updates the Number of Responses & Transcripts for a specific session

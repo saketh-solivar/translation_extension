@@ -174,21 +174,6 @@
             <div id="prompt"></div>
         </div>
 
-        <!-- <div class="audio-container" id="audioSection" style="display: block;">
-            <button id="start" class="button" onclick="startRecording()">Start Recording</button>
-            <button id="stop" class="stop-button" onclick="stopRecording()" style="display: none;">Stop Recording</button>
-            <div id="recordingIndicator" style="display: none;">
-                <img src="https://media.giphy.com/media/3o7abKhOpu0NwenH3O/giphy.gif" alt="Recording in progress" style="width: 100px; height: auto;">
-                <p id="timer">Recording: 0:00</p>
-            </div>
-            <p id="audioDuration"></p> 
-            <audio id="audioPlayer" controls hidden></audio>
-
-            <button id="erase" class="button" onclick="eraseRecording()" style="display: none;">Re-Record Current Response</button>
-
-            <button id="next" class="button" style="display: none;"></button>
-        </div> -->
-
         <div class="audio-container" id="audioSection" style="display: block;">
             <button id="start" class="button" onclick="startRecording()">Start Recording</button>
             <button id="stop" class="stop-button" onclick="stopRecording()" style="display: none;">Stop Recording</button>
@@ -207,19 +192,13 @@
     </div>
     <script>
         // {{INJECT_START_STATE}}
-        // This 'resumeState' object is injected by FastAPI
-        
         let prompts = [];
         let questions = [];
         let additionalQuestionsMap = {};
-        
-        // --- Restore your original state variables ---
         let currentPromptIndex = 0; // This is our ARRAY index
         let isPromptPhase = true;
         let isAdditionalPhase = false;
         let additionalIndex = 0; // This is the AQG array index
-        // --------------------------------------------
-
         let mediaRecorder;
         let audioChunks = [];
         let recordingTimer;
@@ -227,7 +206,6 @@
         let timerInterval;
         let micAccessGranted = false;
         let wakeLock = null;
-
 
         async function requestWakeLock() {
             try {
@@ -258,7 +236,7 @@
         // This is the main entry point, called by onpageshow
         async function initializeSession() {
             await requestMicAccess();
-            await fetchPrompts(); // This is the "get method"
+            await fetchPrompts(); 
         }
     
         // Fetch prompts and questions and instructions from FastAPI
@@ -281,117 +259,35 @@
                 document.getElementById("instructionModal").style.display = "flex";
             }
             
-            // NEW: Find our starting point based on resume state
             setInitialState();
-
             displayContent(); 
         }
 
-        // ✅ NEW: Finds the correct ARRAY index from the DATA index
         function setInitialState() {
             // resumeState is injected from app.py
             isPromptPhase = (resumeState.phase === "prompt" || resumeState.phase === "aqg");
             isAdditionalPhase = (resumeState.phase === "aqg");
 
-            // --- THIS IS THE NEW FIX ---
-            // Check if this is a brand-new session (starting at the very beginning)
             if (resumeState.phase === "prompt" && resumeState.prompt_index === 0 && resumeState.additional_index === 0) {
-                currentPromptIndex = 0; // START AT THE VERY BEGINNING (array index 0)
-                return; // We are done.
+                currentPromptIndex = 0;
+                return;
             }
-            // --- END OF FIX ---
 
-            // If we are here, it's a RESUMED session, so find the correct index
             if (isPromptPhase) {
-                // Find the array index in `prompts` that matches the data index
                 currentPromptIndex = prompts.findIndex(p => p.data_index === resumeState.prompt_index);
                 if (isAdditionalPhase) {
                     additionalIndex = resumeState.additional_index;
                 }
 
-            } else { // Followup phase
-                // Find the array index in `questions` that matches the data index
+            } else {
                 currentPromptIndex = questions.findIndex(q => q.data_index === resumeState.question_index);
             }
 
-            // Failsafe in case index isn't found
             if (currentPromptIndex === -1) {
                 currentPromptIndex = 0;
             }
         }
     
-
-        // function displayContent() {
-        //     const promptEl = document.getElementById("prompt");
-        //     const audioSection = document.getElementById("audioSection");
-        //     const nextButton = document.getElementById("next");
-
-        //     let currentItem, totalLength, labelPrefix;
-            
-        //     if (isPromptPhase && isAdditionalPhase) {
-        //         // --- 1. ADDITIONAL QUESTION PHASE ---
-        //         const parentPrompt = prompts[currentPromptIndex];
-        //         const promptKey = parentPrompt.PromptID; // Use PromptID from parent
-        //         const additionalList = additionalQuestionsMap[promptKey];
-                
-        //         if (additionalList && additionalIndex < additionalList.length) {
-        //             const label = `Additional Question ${additionalIndex + 1} for Prompt ${parentPrompt.PromptID}`;
-        //             promptEl.innerHTML = `<h3>${label}</h3><p>${additionalList[additionalIndex]}</p>`;
-        //         }
-        //         audioSection.style.display = "block";
-        //         nextButton.style.display = "none";
-        //         updateButtonText();
-        //         return; // AQG display is simple, exit here
-
-        //     } else if (isPromptPhase) {
-        //         // --- 2. PROMPT PHASE (includes Pagebreaks) ---
-        //         if (currentPromptIndex >= prompts.length) { // Finished all prompts
-        //             isPromptPhase = false;
-        //             currentPromptIndex = 0; // Reset array index for questions
-        //             displayContent(); // Recurse to show first question
-        //             return;
-        //         }
-        //         currentItem = prompts[currentPromptIndex];
-        //         // Get total number of *actual* prompts (not pagebreaks) for "X of Y" label
-        //         totalLength = prompts.filter(p => p.data_index !== -1).length;
-        //         labelPrefix = "Prompt";
-
-        //     } else {
-        //         // --- 3. FOLLOW-UP PHASE (includes Pagebreaks) ---
-        //         if (currentPromptIndex >= questions.length) { // Finished survey
-        //             showThankYouMessage();
-        //             return;
-        //         }
-        //         currentItem = questions[currentPromptIndex];
-        //         // Get total number of *actual* questions (not pagebreaks)
-        //         totalLength = questions.filter(q => q.data_index !== -1).length;
-        //         labelPrefix = "Follow-up Question";
-        //     }
-
-        //     // Now, check the type of the currentItem
-        //     const itemType = currentItem.Type.toLowerCase();
-            
-        //     if (itemType === 'pagebreak') {
-        //         // ✅ --- HANDLE PAGEBREAK ---
-        //         promptEl.innerHTML = `<div style="font-size: 1.2em; line-height: 1.6;">${currentItem.Questions}</div>`;
-        //         audioSection.style.display = "none"; // Hide audio
-        //         nextButton.style.display = "inline-block"; // Show 'Next'
-        //         nextButton.innerText = "Next";
-
-        //     } else {
-        //         // --- HANDLE PROMPT / FOLLOW-UP ---
-        //         const itemText = currentItem.Questions;
-        //         // Use data_index + 1 for the label (e.g., data_index 0 is "Prompt 1")
-        //         const label = `${labelPrefix} ${currentItem.data_index + 1} of ${totalLength}`;
-        //         promptEl.innerHTML = `<h3>${label}</h3><p>${itemText}</p>`;
-                
-        //         audioSection.style.display = "block"; // Show audio
-        //         nextButton.style.display = "none";  // Hide 'Next'
-        //     }
-        
-        //     updateButtonText();
-        // }        
-
         function displayContent() {
             const promptEl = document.getElementById("prompt");
             const audioSection = document.getElementById("audioSection");
@@ -411,7 +307,7 @@
                 }
                 audioSection.style.display = "block";
                 nextButton.style.display = "none";
-                updateButtonText(); // This is correct, it stays here
+                updateButtonText();
                 return; 
 
             } else if (isPromptPhase) {
@@ -440,15 +336,11 @@
             const itemType = currentItem.Type.toLowerCase();
             
             if (itemType === 'pagebreak') {
-                // ✅ --- HANDLE PAGEBREAK ---
                 promptEl.innerHTML = `<div style="font-size: 1.2em; line-height: 1.6;">${currentItem.Questions}</div>`;
                 audioSection.style.display = "none"; 
                 nextButton.style.display = "inline-block"; 
                 nextButton.innerText = "Next";
-                // 🛑 DO NOT call updateButtonText() here
-
             } else {
-                // --- HANDLE PROMPT / FOLLOW-UP ---
                 const itemText = currentItem.Questions;
                 const label = `${labelPrefix} ${currentItem.data_index + 1} of ${totalLength}`;
                 promptEl.innerHTML = `<h3>${label}</h3><p>${itemText}</p>`;
@@ -456,10 +348,8 @@
                 audioSection.style.display = "block"; 
                 nextButton.style.display = "none";
 
-                updateButtonText(); // ✅ MOVE updateButtonText() INSIDE this 'else' block
+                updateButtonText();
             }
-        
-            // 🛑 REMOVE updateButtonText() from the end of the function
         }
     
         async function startRecording() {
@@ -524,26 +414,20 @@
                     formData.append("session_id", getQueryParameter('id'));
                     formData.append("file_extension", fileExtension);
 
-                    // ✅ --- NEW LOGIC FOR INDEXES ---
                     let currentItem = isPromptPhase ? prompts[currentPromptIndex] : questions[currentPromptIndex];
                     let dataIndex_1based;
 
                     if (isAdditionalPhase) {
-                        // Use parent prompt's data index
                         dataIndex_1based = prompts[currentPromptIndex].data_index + 1;
                     } else {
-                        // Use item's own data index
                         dataIndex_1based = currentItem.data_index + 1;
                     }
 
                     formData.append("prompt_index", dataIndex_1based);
-                    // This is your original, correct logic for saving to the right folder
                     formData.append("is_prompt", isPromptPhase && !isAdditionalPhase); 
                     formData.append("is_additional", isPromptPhase && isAdditionalPhase);
                     formData.append("additional_index", isAdditionalPhase ? additionalIndex + 1 : 0);
                     
-
-    
                     console.log("Uploading audio...");
                     const response = await fetch("/save_audio", {
                         method: "POST",
@@ -630,7 +514,6 @@
             let projectCode = getQueryParameter("pc");
             let sessionId = getQueryParameter("id");
             
-            // ✅ --- NEW LOGIC FOR INDEXES ---
             let currentItem = isPromptPhase ? prompts[currentPromptIndex] : questions[currentPromptIndex];
             let dataIndex_1based;
 
@@ -649,7 +532,6 @@
                         method: "DELETE",
                     }
                 );
-
     
                 const data = await response.json();
                 if (response.ok && !data.error) {
@@ -674,7 +556,6 @@
             }
         }
         
-        // This is your original function, it should work fine
         function updateButtonText() {
             const nextBtn = document.getElementById("next");
             
@@ -724,44 +605,34 @@
         
                 if (!additionalList || additionalIndex >= additionalList.length) {
                     isAdditionalPhase = false;
-                    currentPromptIndex++; // Move to next prompt (array index)
+                    currentPromptIndex++; 
                 }
         
             } else if (isPromptPhase && !isAdditionalPhase) {
-                // We just finished a Prompt or a Pagebreak
                 if (wasPagebreak) { 
-                    currentPromptIndex++; // Just advance past pagebreak
+                    currentPromptIndex++; 
                 } else {
                     // Check for AQGs using PromptID
                     const additionalList = additionalQuestionsMap[promptKey];
                     if (additionalList && additionalList.length > 0) {
                         isAdditionalPhase = true;
-                        additionalIndex = 0; // Reset for AQG
-                        // Stay on same currentPromptIndex
+                        additionalIndex = 0; 
                     } else {
-                        currentPromptIndex++; // No AQGs, move to next item
+                        currentPromptIndex++; 
                     }
                 }
-                
-                // (Transition to questions is handled inside displayContent)
-        
             } else {
-                // Follow-up phase
                 currentPromptIndex++;
-                // (Transition to end is handled inside displayContent)
             }
         
             displayContent();
             
-            // Only reset audio UI if we *didn't* just finish a pagebreak
             if (!wasPagebreak) { 
                 resetUIForNext();
             }
         });        
                 
         function resetUIForNext() {
-                // Reset UI for the next prompt/question
-                // document.getElementById("next").style.display = "none"; // ✅ THIS LINE IS REMOVED
                 document.getElementById("erase").style.display = "none";
                 document.getElementById("start").style.display = "inline-block";
                 document.getElementById("audioDuration").style.display = "none";
@@ -786,7 +657,7 @@
             // Call the FastAPI send_mail endpoint
             fetch("/send_mail", {
                 method: "POST",
-                body: formData, // Pass session_id or any required data
+                body: formData, 
             })
             .then(response => response.json())
             .then(data => console.log("Email sent:", data))
@@ -800,16 +671,14 @@
             console.log("Microphone has been disabled.");
         }
     
-        // ✅ THIS IS THE FIX FOR "GET METHOD NOT CALLED"
         window.onpageshow = function(event) {
             if (event.persisted) {
                 window.location.reload(true);
             } else {
-                initializeSession(); // This kicks everything off
+                initializeSession(); 
             }
         };
 
-        // Make sure this runs AFTER the modal exists in the DOM
         document.addEventListener("DOMContentLoaded", function () {
             const closeBtn = document.getElementById("closeInstruction");
             const modal = document.getElementById("instructionModal");
