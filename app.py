@@ -188,9 +188,11 @@ async def save_audio(
         print("In save_Audio function")
         print("Audio type is", file_extension)
         print(f"Is prompt: {is_prompt}")
-        SPREADSHEET_ID = spreadsheet_config.get_spreadsheet_id()
+        SPREADSHEET_ID = get_sheet_id_from_master(MASTER_SPREADSHEET_ID, project_code)
         if not SPREADSHEET_ID:
             raise HTTPException(status_code=400, detail="Spreadsheet ID not set.")
+
+        spreadsheet_config.set_spreadsheet_id(SPREADSHEET_ID) 
         print("SPREADSHEET_ID is:",SPREADSHEET_ID)
 
         # Define the file path in GCP Storage, now different for prompts and questions
