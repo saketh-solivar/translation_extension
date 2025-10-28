@@ -7,7 +7,7 @@
 # RUN apt-get clean && rm -rf /var/lib/apt/lists/*
 # CMD ["uvicorn", "main:app", "--reload", "--host", "0.0.0.0", "--port", "8000"]
 
-FROM python:3.9-slim
+FROM python:3.11-slim
 WORKDIR /code
 RUN pip install pip --upgrade
 RUN apt-get update && apt-get install -y ffmpeg && apt-get clean

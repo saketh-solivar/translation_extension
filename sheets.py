@@ -7,7 +7,7 @@ from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 import gspread
 from google.oauth2.service_account import Credentials
-import pandas as pd
+# import pandas as pd
 from helperfunctions import find_session_row, get_prompt_column_index, get_aqg_column_index, get_question_column_index, convert_to_column_letter
 
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets","https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -27,16 +27,24 @@ def get_sheet_id_from_master(MASTER_SPREADSHEET_ID,project_code):
 
         # Convert sheet data to DataFrame
         data = worksheet.get_all_records()
-        df = pd.DataFrame(data)
+        # df = pd.DataFrame(data)
 
         # Search for the spreadsheet ID corresponding to the project code
-        row = df.loc[df["Project Code"] == project_code, "SheetId"]
+        # row = df.loc[df["Project Code"] == project_code, "SheetId"]
 
-        if not row.empty:
-            return row.iloc[0]  # Return the first matched SheetId
-        else:
-            print("Project code not found in master sheet.")
-            return None
+        # if not row.empty:
+        #     return row.iloc[0]  # Return the first matched SheetId
+        # else:
+        #     print("Project code not found in master sheet.")
+        #     return None
+
+        # Search for the spreadsheet ID corresponding to the project code
+        for record in data:
+            if record.get("Project Code") == project_code:
+                return record.get("SheetId")
+
+        print("Project code not found in master sheet.")
+        return None
 
     except Exception as e:
         print(f"Error retrieving spreadsheet ID: {e}")

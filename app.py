@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException, Request, File, UploadFile, Form, Query
-from sheets import get_all_questions_from_sheet, update_status_to_responded,check_session_exists,update_response_in_sheet,get_last_answered_index,update_logs, get_sheet_id_from_master,get_additional_questions_from_sheet, check_user_details_exist ,update_response_count_in_sheet,get_instruction_from_sheet
+from sheets import get_all_questions_from_sheet, update_status_to_responded,check_session_exists,update_response_in_sheet,get_last_answered_index,update_logs, get_sheet_id_from_master,get_additional_questions_from_sheet, update_response_count_in_sheet,get_instruction_from_sheet
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles 
 from google.cloud import storage
@@ -9,7 +9,7 @@ from mail import send_email_with_links
 import time
 from user_agents import parse
 import datetime
-import pandas as pd
+# import pandas as pd
 import json
 
 app = FastAPI()
@@ -102,14 +102,11 @@ async def serve_home(request: Request):
         update_status_to_responded(SPREADSHEET_ID, session_id)
         return HTMLResponse(content="<h2>✅ You have answered all prompts and questions. Thank you!</h2>")
 
-    user_details_exist = check_user_details_exist(SPREADSHEET_ID, session_id)
-
     with open("templates/prompts.html", "r") as file:
         html_content = file.read()
 
     js_state_injection = f"""
     const resumeState = {json.dumps(resume_state)};
-    let userDetailsAlreadyExist = {str(user_details_exist).lower()};
     """
 
     html_content = html_content.replace("// {{INJECT_START_STATE}}", js_state_injection)
