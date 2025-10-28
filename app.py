@@ -15,15 +15,20 @@ app = FastAPI()
 
 
 # Replace with your Google Sheets ID and new unified sheet
-MASTER_SPREADSHEET_ID = '1BvHGCQH2ii0Aj-gQCi0sRIbygdIyrWYhfbkcVDQc88s'
+# MASTER_SPREADSHEET_ID = '1BvHGCQH2ii0Aj-gQCi0sRIbygdIyrWYhfbkcVDQc88s'
+MASTER_SPREADSHEET_ID = '1Iyckzx9CVVw4wQcQjwsoqR6-vwj57U4p9ljTCwowqU0'
 ALL_QUESTIONS_SHEET = 'AllQuestions'
 RESPONSE_RANGE = 'URLs!A1:ZZ'
 INSTRUCTIONS_RANGE = 'Initialpage!B1:B'  # If still needed
 
 # GCP Storage Bucket Name
-BUCKET_NAME = "ckuserrecordings"
+# BUCKET_NAME = "ckuserrecordings"
+# # Initialize Google Cloud Storage Client
+# storage_client = storage.Client(project="quiz-generator-464201")
+
+BUCKET_NAME = "userrecordings"
 # Initialize Google Cloud Storage Client
-storage_client = storage.Client(project="quiz-generator-464201")
+storage_client = storage.Client(project="story-legacy-442314")
 
 class SpreadsheetConfig:
     def __init__(self):
