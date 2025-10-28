@@ -406,7 +406,7 @@
                 const additionalList = additionalQuestionsMap[promptKey];
                 
                 if (additionalList && additionalIndex < additionalList.length) {
-                    const label = `Additional Question ${additionalIndex + 1} for Prompt ${parentPrompt.PromptID}`;
+                    const label = `Additional Questions for Prompt ${parentPrompt.PromptID}`;
                     promptEl.innerHTML = `<h3>${label}</h3><p>${additionalList[additionalIndex]}</p>`;
                 }
                 audioSection.style.display = "block";
