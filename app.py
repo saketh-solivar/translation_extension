@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException, Request, File, UploadFile, Form, Query
 from sheets import get_prompts_from_sheet, get_questions_from_sheet, check_session_exists,update_response_in_sheet,get_last_answered_index,get_total_prompts,update_logs, get_sheet_id_from_master,get_additional_questions_from_sheet, check_user_details_exist ,update_response_count_in_sheet,get_instruction_from_sheet
+from sheets import get_all_questions_from_sheet
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles 
 from google.cloud import storage
@@ -10,6 +11,7 @@ import time
 from user_agents import parse
 import datetime
 import pandas as pd
+import json
 
 app = FastAPI()
 
@@ -113,18 +115,37 @@ async def serve_home(request: Request):
     with open("templates/prompts.html", "r") as file:
         html_content = file.read()
 
+    # OLD CODE (in your app.py @app.get("/") route) - THIS IS THE PROBLEM
     js_state_injection = f"""
-    let currentPromptIndex = {resume_state["prompt_index"]};
-    let isPromptPhase = {str(resume_state["phase"] in ["prompt", "aqg"]).lower()};
-    let isAdditionalPhase = {str(resume_state["phase"] == "aqg").lower()};
-    let additionalIndex = {resume_state.get("additional_index", 0)};
-     let userDetailsAlreadyExist = {str(user_details_exist).lower()};
+    const resumeState = {json.dumps(resume_state)};
+    let userDetailsAlreadyExist = {str(user_details_exist).lower()};
     """
 
     html_content = html_content.replace("// {{INJECT_START_STATE}}", js_state_injection)
     return HTMLResponse(content=html_content)
 
 
+
+# @app.get("/prompts_and_questions")
+# def get_prompts(project_code: str = Query(...)):
+#     try:
+#         print("In prompts function pc =", project_code)
+#         SPREADSHEET_ID = get_sheet_id_from_master(MASTER_SPREADSHEET_ID, project_code)
+#         if not SPREADSHEET_ID:
+#             raise HTTPException(status_code=400, detail="Spreadsheet ID not set.")
+#         print("SPREADSHEET_ID is:", SPREADSHEET_ID)
+#         prompts = [q["Questions"] for q in get_prompts_from_sheet(SPREADSHEET_ID, ALL_QUESTIONS_SHEET) if "Questions" in q]
+#         questions = [q["Questions"] for q in get_questions_from_sheet(SPREADSHEET_ID, ALL_QUESTIONS_SHEET) if "Questions" in q]
+#         # For additional questions, keep the mapping by PromptID, but only the HTML
+#         additional_questions_raw = get_additional_questions_from_sheet(SPREADSHEET_ID, ALL_QUESTIONS_SHEET)
+#         additional_questions = {pid: [q["Questions"] for q in qs if "Questions" in q] for pid, qs in additional_questions_raw.items()}
+#         # If you still need instructions from a separate sheet, keep this line:
+            
+#         instruction_row = get_instruction_from_sheet(SPREADSHEET_ID, ALL_QUESTIONS_SHEET)
+#         instructions = instruction_row["Questions"] if instruction_row and "Questions" in instruction_row else ""
+#         return {"prompts": prompts, "questions": questions, "instructions": instructions, "additional_questions": additional_questions}
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/prompts_and_questions")
 def get_prompts(project_code: str = Query(...)):
@@ -134,19 +155,54 @@ def get_prompts(project_code: str = Query(...)):
         if not SPREADSHEET_ID:
             raise HTTPException(status_code=400, detail="Spreadsheet ID not set.")
         print("SPREADSHEET_ID is:", SPREADSHEET_ID)
-        prompts = [q["Questions"] for q in get_prompts_from_sheet(SPREADSHEET_ID, ALL_QUESTIONS_SHEET) if "Questions" in q]
-        questions = [q["Questions"] for q in get_questions_from_sheet(SPREADSHEET_ID, ALL_QUESTIONS_SHEET) if "Questions" in q]
-        # For additional questions, keep the mapping by PromptID, but only the HTML
+
+        # 1. Fetch ALL questions ONE time
+        all_questions = get_all_questions_from_sheet(SPREADSHEET_ID, ALL_QUESTIONS_SHEET)
+
+        # 2. Build the lists correctly
+        prompts_list = []
+        questions_list = []
+        current_list = prompts_list  # Start by adding to the prompts list
+
+        prompt_data_index = 0    # This tracks Response1, Response2...
+        question_data_index = 0  # This tracks QResponse1, QResponse2...
+
+        for q in all_questions:
+            item_type = q.get("Type", "").strip().lower()
+
+            if item_type == "prompt":
+                q['data_index'] = prompt_data_index  # 0-based index
+                current_list.append(q)
+                prompt_data_index += 1
+            
+            elif item_type == "followup":
+                current_list = questions_list  # SWITCH to the questions list
+                q['data_index'] = question_data_index  # 0-based index
+                current_list.append(q)
+                question_data_index += 1
+            
+            elif item_type == "pagebreak":
+                q['data_index'] = -1  # -1 means it has no data column
+                current_list.append(q)
+            
+            # Types 'instruction' and 'additional' are skipped
+        
+        # 3. Get Additional/Instruction (no change to this logic)
         additional_questions_raw = get_additional_questions_from_sheet(SPREADSHEET_ID, ALL_QUESTIONS_SHEET)
         additional_questions = {pid: [q["Questions"] for q in qs if "Questions" in q] for pid, qs in additional_questions_raw.items()}
-        # If you still need instructions from a separate sheet, keep this line:
             
         instruction_row = get_instruction_from_sheet(SPREADSHEET_ID, ALL_QUESTIONS_SHEET)
         instructions = instruction_row["Questions"] if instruction_row and "Questions" in instruction_row else ""
-        return {"prompts": prompts, "questions": questions, "instructions": instructions, "additional_questions": additional_questions}
+        
+        # 4. Return the new, correct lists
+        return {
+            "prompts": prompts_list, 
+            "questions": questions_list, 
+            "instructions": instructions, 
+            "additional_questions": additional_questions
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
 
 @app.post("/save_audio")
 async def save_audio(
