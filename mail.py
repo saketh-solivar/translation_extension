@@ -6,24 +6,14 @@ from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 import time
 
-# Constants
-# source_bucket = "userrecordings"
-# destination_bucket_name = "trans_dest"
-# google_sheet_id = "1ZlO_YQyFV6HsZH6hWIEtCw4VHxa7NXKlRULG_2Dkyao"  
-# sheet_name = "URLs"
-# SHEET_URL = "https://docs.google.com/spreadsheets/d/1ZlO_YQyFV6HsZH6hWIEtCw4VHxa7NXKlRULG_2Dkyao/edit"
+sheet_name = "URLs"
+gc = gspread.service_account(filename="credentials.json")
 
 # Email configuration
 SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 587
 SENDER_EMAIL = "storylegacyresponses@gmail.com"
 SENDER_PASSWORD = 'axya atyw akur szpm' # Use environment variable for security
-
-gc = gspread.service_account(filename="credentials.json")
-# sh = gc.open_by_url(SHEET_URL)
-
-# worksheet = sh.worksheet(sheet_name)
-
 
 def update_status(session_id,worksheet):
     cell = worksheet.find(str(session_id), in_column=worksheet.find("Session Key").col)
@@ -34,8 +24,6 @@ def update_status(session_id,worksheet):
     status_col_num = worksheet.find("Status").col
     worksheet.update_cell(row_num,col_num,"Sent")
     print("✅ Status updated to 'Sent'")
-
-
 
 def grant_access_to_files(recipient_emails):
     """Grants read access to recipient emails for all objects in both buckets using IAM."""
@@ -61,8 +49,6 @@ def grant_access_to_files(recipient_emails):
         bucket.set_iam_policy(policy)
         print(f"Granted read access to {recipient_emails} for bucket {bucket_name}")
 
-
-
 def fetch_recipient_emails(project_code,google_sheet_id):
     """Fetches emails from the project info sheet where the ProjectCode matches."""
     creds = Credentials.from_service_account_file("credentials.json")
@@ -72,88 +58,146 @@ def fetch_recipient_emails(project_code,google_sheet_id):
     sheet = service.spreadsheets()
     result = sheet.values().get(spreadsheetId=google_sheet_id, range=RANGE_NAME).execute()
     values = result.get("values", [])
-    # print(values)
-    # print(values[0][1])
     recipient_emails = values[0][1].split(',')
     print(recipient_emails)
     
     return recipient_emails
 
+def col_index_to_letter(index):
+    """Converts 1-based column index to Excel-style column letter."""
+    result = ""
+    while index > 0:
+        index, remainder = divmod(index - 1, 26)
+        result = chr(65 + remainder) + result
+    return result
+
 def fetch_response_links(session_id, google_sheet_id, initial_wait=120, max_wait_time=600, check_interval=30):
-    """Fetches response and transcript URLs for a session_id from the Google Sheet.  
-       Waits for 120 seconds initially before first retry, then checks every 30s for up to 10 minutes.
-    """
+    """Fetches response and transcript URLs for a session_id from the Google Sheet dynamically."""
+
     creds = Credentials.from_service_account_file("credentials.json")
     service = build("sheets", "v4", credentials=creds)
-
-    RANGE_NAME = "URLs!C:Y"  # Fetch only relevant columns (C to Y)
     sheet = service.spreadsheets()
 
-    # Initial wait before checking
     print(f"Waiting for {initial_wait} seconds before first check...")
     time.sleep(initial_wait)
 
     elapsed_time = initial_wait
     while elapsed_time < max_wait_time:
-        result = sheet.values().get(spreadsheetId=google_sheet_id, range=RANGE_NAME).execute()
+        # Step 1: Fetch headers from row 1, starting from column C
+        header_range = "URLs!C1:1"
+        header_result = sheet.values().get(spreadsheetId=google_sheet_id, range=header_range).execute()
+        headers = header_result.get("values", [[]])[0]
+        total_cols = len(headers)
+
+        if total_cols < 3:
+            print("Not enough columns to parse.")
+            return []
+
+        # Step 2: Exclude last 2 columns
+        usable_cols = total_cols - 2
+        start_col_index = 3  # Column C = 3
+        end_col_index = start_col_index + usable_cols - 1
+        end_col_letter = col_index_to_letter(end_col_index)
+
+        # Step 3: Fetch data range dynamically from C to computed last usable column
+        data_range = f"URLs!C:{end_col_letter}"
+        result = sheet.values().get(spreadsheetId=google_sheet_id, range=data_range).execute()
         values = result.get("values", [])
 
-        # Create a dictionary for quick lookup: { session_id -> [responses, transcripts] }
-        session_data = {row[0]: row[3:] for row in values if row and row[0] == session_id}
-        print("session_data is:", session_data)
+        if not values:
+            print("No data rows found.")
+            return []
 
-        if session_id in session_data:
-            row_data = session_data[session_id]
+        headers = values[0]
+        data_rows = values[1:]
 
-            # Check if any response or transcript is missing
-            for i in range(1, len(row_data), 2):
-                if i + 1 < len(row_data):
-                    response = row_data[i].strip() if row_data[i] else ""
-                    transcript = row_data[i + 1].strip() if row_data[i + 1] else ""
+        # Step 4: Find the row that matches the session_id 
+        session_row = next((r for r in data_rows if r and r[0].strip() == session_id), None)
+        if not session_row:
+            print(f"Session ID '{session_id}' not found.")
+            return []
 
-                    if not response or not transcript:  # If either is empty, return immediately
-                        print(f"Missing response or transcript at index {i}: ({response}, {transcript})")
-                        return []  
+        # Step 5: Clean up the row data
+        session_data = [(headers[i], session_row[i].strip() if i < len(session_row) and session_row[i] else "")
+                        for i in range(len(headers))]
 
-            # If all responses and transcripts are present, return them
-            return [(row_data[i], row_data[i + 1]) for i in range(1, len(row_data), 2) if i + 1 < len(row_data)]
+        # Step 6: Group and return (label, response_url, transcript_url)
+        links = []
+        temp = {}
+        for header, value in session_data:
+            header_lower = header.lower()
+            if "response" in header_lower:
+                temp["response"] = value
+                temp["label"] = header
+            elif "transcript" in header_lower:
+                temp["transcript"] = value
 
-        # Wait before retrying
+            if "response" in temp and "transcript" in temp:
+                if not temp["response"] or not temp["transcript"]:
+                    print(f"Missing data for: {temp}")
+                    return []
+                links.append((temp["label"], temp["response"], temp["transcript"]))
+                temp = {}
+
+        if links:
+            return links
+
         print(f"Waiting for transcript data... {elapsed_time}/{max_wait_time} seconds elapsed.")
         time.sleep(check_interval)
         elapsed_time += check_interval
 
     print("Timed out waiting for complete response and transcript data.")
-    return []  # Return empty list if not all values are filled within the wait time
+    return []
 
 def send_email_with_links(project_code,session_id,sheet_id):
     """Fetches response & transcript links, grants access, and sends them via email."""
-    project_code =  project_code
-    session_id = session_id
-    # print("sid",session_id)
     SHEET_URL = f"https://docs.google.com/spreadsheets/d/{sheet_id}/edit"
     sh = gc.open_by_url(SHEET_URL)
     worksheet = sh.worksheet(sheet_name)
     recipient_emails = fetch_recipient_emails(project_code,sheet_id)
-    session_links = fetch_response_links(session_id,sheet_id)
-    print("sl",session_links)
-    if session_links==[]:
+    session_links = fetch_response_links(session_id, sheet_id)
+    if not session_links:
         print("Email is not sent since some links are missing.")
         return
-    grant_access_to_files(recipient_emails)  # Grant access before sending email
-    
+
+    grant_access_to_files(recipient_emails)
+
+    # Prepare structured output
+    prompts, aqgs, questions = [], [], []
+
+    for label, response_url, transcript_url in session_links:
+        label_clean = label.strip().lower()
+
+        if label_clean.startswith("response") and "_" not in label_clean:
+            prompts.append((label, response_url, transcript_url))
+        elif label_clean.startswith("aqgresponse"):
+            aqgs.append((label, response_url, transcript_url))
+        elif label_clean.startswith("qresponse"):
+            questions.append((label, response_url, transcript_url))
+
+    # Build email content
     email_content = f"Dear User,\n\nHere are the response and transcript links for the session {session_id} and Project {project_code}:\n\n"
-    i=1
-    for idx, (response_url, transcript_url) in enumerate(session_links,start=1):
-        if idx <= 4:
-            email_content += f"Prompt {idx}:\n"
-            email_content += f"- Audio Response: {response_url}\n"
-            email_content += f"- Transcript: {transcript_url}\n\n"
-        else:
-            email_content += f"Question {i}:\n"
-            email_content += f"- Audio Response: {response_url}\n"
-            email_content += f"- Transcript: {transcript_url}\n\n" 
-            i=i+1
+
+    # Add prompts
+    for i, (label, response_url, transcript_url) in enumerate(prompts, 1):
+        email_content += f"Prompt {i}:\n"
+        email_content += f"- Audio Response: {response_url}\n"
+        email_content += f"- Transcript: {transcript_url}\n\n"
+
+        # Insert AQGs if available for this prompt
+        p_key = f"_p{i}_"
+        for aqg_label, aqg_resp, aqg_trans in aqgs:
+            if p_key in aqg_label.lower():
+                aqg_num = aqg_label.lower().split("_")[-1]
+                email_content += f"Additional Question {aqg_num}:\n"
+                email_content += f"- Audio Response: {aqg_resp}\n"
+                email_content += f"- Transcript: {aqg_trans}\n\n"
+
+    # Add questions
+    for i, (label, response_url, transcript_url) in enumerate(questions, 1):
+        email_content += f"Question {i}:\n"
+        email_content += f"- Audio Response: {response_url}\n"
+        email_content += f"- Transcript: {transcript_url}\n\n"
 
     email_content += "\nBest regards,\nStoryLegacy Team"
 
