@@ -247,9 +247,10 @@ async def save_audio(
             fs_update_response(
                 project_code=project_code, 
                 session_id=session_id,
-                prompt_index=prompt_index,
-                audio_url=public_url,
-                is_additional=is_additional
+                index=prompt_index,         
+                audio_url=response_url,
+                response_type=response_type,      
+                additional_index=additional_index
             )
         except Exception as e:
             print(f"⚠️ Firestore write failed: {e}")
