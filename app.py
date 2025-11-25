@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException, Request, File, UploadFile, Form, Query
 from sheets import get_all_questions_from_sheet, update_status_to_responded,check_session_exists,update_response_in_sheet,get_last_answered_index,update_logs, get_sheet_id_from_master,get_additional_questions_from_sheet, update_response_count_in_sheet,get_instruction_from_sheet
 from fastapi.responses import HTMLResponse
+from firestore_db import fs_update_response, fs_log_activity
 from fastapi.staticfiles import StaticFiles 
 from google.cloud import storage
 import os
@@ -88,6 +89,16 @@ async def serve_home(request: Request):
     print(ip)
     # Call update_logs function to store the log
     log_response = update_logs(SPREADSHEET_ID,session_id, timestamp, details,{request.client.host})
+    try:
+        fs_log_activity(
+            project_code=project_code,
+            session_id=session_id,
+            timestamp=timestamp,
+            details=details,
+            client_ip={request.client.host} # Passing the set just like you do for sheets
+        )
+    except Exception as e:
+        print(f"⚠️ Parallel Log Failed: {e}")
 
     print("Inside Home Function")
     if not project_code or not session_id:
@@ -230,6 +241,18 @@ async def save_audio(
             new_value=response_url,
             additional_index=additional_index if is_additional else None
         )
+
+        try:
+            # Use the project_code variable that is ALREADY in your function arguments
+            fs_update_response(
+                project_code=project_code, 
+                session_id=session_id,
+                prompt_index=prompt_index,
+                audio_url=public_url,
+                is_additional=is_additional
+            )
+        except Exception as e:
+            print(f"⚠️ Firestore write failed: {e}")
 
         print("value of updated", updated)
         if not updated:
