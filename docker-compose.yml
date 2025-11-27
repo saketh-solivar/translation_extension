@@ -7,4 +7,5 @@ services:
    volumes:
      - ".:${CWD:-/code}"
    environment:
+      - PYTHONUNBUFFERED=1
       - GOOGLE_APPLICATION_CREDENTIALS=/code/credentials.json

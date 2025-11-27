@@ -232,6 +232,16 @@ async def save_audio(
         # Generate GCS URL
         response_url = f"https://storage.cloud.google.com/{BUCKET_NAME}/{file_path}"
         print("response url", response_url)
+        
+        fs_update_response(
+            project_code=project_code, 
+            session_id=session_id,
+            index=prompt_index,         
+            audio_url=response_url,
+            response_type=response_type,      
+            additional_index=additional_index
+        )
+
         updated = update_response_in_sheet(
             spreadsheet_id=SPREADSHEET_ID,
             sheet_name="URLs",
@@ -241,19 +251,6 @@ async def save_audio(
             new_value=response_url,
             additional_index=additional_index if is_additional else None
         )
-
-        try:
-            # Use the project_code variable that is ALREADY in your function arguments
-            fs_update_response(
-                project_code=project_code, 
-                session_id=session_id,
-                index=prompt_index,         
-                audio_url=response_url,
-                response_type=response_type,      
-                additional_index=additional_index
-            )
-        except Exception as e:
-            print(f"⚠️ Firestore write failed: {e}")
 
         print("value of updated", updated)
         if not updated:
@@ -268,7 +265,7 @@ async def save_audio(
             update_status_to_responded(SPREADSHEET_ID, session_id)
             print(f"✅ Status instantly updated for session {session_id}")
         else :
-            print("Responses Not Completed for session {session_id}")
+            print(f"Responses Not Completed for session {session_id}")
 
         return {"message": "Audio uploaded successfully", "response_url": response_url}
 

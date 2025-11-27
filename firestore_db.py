@@ -17,15 +17,11 @@ def fs_update_response(project_code, session_id, index, audio_url, response_type
     try:
         session_ref = db.collection('projects').document(project_code).collection('sessions').document(session_id)
         
-        # Generate a unique key based on the type
         if response_type == "aqg":
-            # Example: Prompt 1, Additional Q 2 -> "AQ_1_2"
             key = f"AQ_{index}_{additional_index}"
         elif response_type == "question":
-            # Example: Final Question 1 -> "Q_1"
             key = f"Q_{index}"
         else:
-            # Example: Main Prompt 1 -> "P_{index}"
             key = f"P_{index}"
 
         field_path = f"responses.{key}"

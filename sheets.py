@@ -225,7 +225,6 @@ def update_response_count_in_sheet(spreadsheet_id, session_id):
             return False
 
         headers = rows[0]
-        print("Headers found:", headers)
         try:
             session_col_index = headers.index("Session Key")
             count_col_index = headers.index("Number of Responses & Transcripts")
