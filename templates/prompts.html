@@ -427,6 +427,27 @@
                     formData.append("is_prompt", isPromptPhase && !isAdditionalPhase); 
                     formData.append("is_additional", isPromptPhase && isAdditionalPhase);
                     formData.append("additional_index", isAdditionalPhase ? additionalIndex + 1 : 0);
+                    // Prefer precise float duration from the audio element (fractional seconds).
+                    try {
+                        const audioPlayer = document.getElementById("audioPlayer");
+                        // Ensure metadata has loaded so `duration` is available.
+                        if (isNaN(audioPlayer.duration) || audioPlayer.duration <= 0) {
+                            await new Promise(resolve => {
+                                const onMeta = () => {
+                                    audioPlayer.removeEventListener('loadedmetadata', onMeta);
+                                    resolve();
+                                };
+                                audioPlayer.addEventListener('loadedmetadata', onMeta);
+                                // safety timeout in case event doesn't fire
+                                setTimeout(resolve, 500);
+                            });
+                        }
+                        const durationVal = (!isNaN(audioPlayer.duration) && audioPlayer.duration > 0) ? audioPlayer.duration : timerCount;
+                        formData.append("duration_seconds", String(Number(durationVal).toFixed(2)));
+                    } catch (err) {
+                        // Fallback to integer seconds counted by the timer
+                        formData.append("duration_seconds", String(timerCount));
+                    }
                     
                     console.log("Uploading audio...");
                     const response = await fetch("/save_audio", {

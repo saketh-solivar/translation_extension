@@ -13,7 +13,7 @@ if not firebase_admin._apps:
 
 db = firestore.client()
 
-def fs_update_response(project_code, session_id, index, audio_url, response_type="prompt", additional_index=None):
+def fs_update_response(project_code, session_id, index, audio_url, response_type="prompt", additional_index=None, duration_seconds=None):
     try:
         session_ref = db.collection('projects').document(project_code).collection('sessions').document(session_id)
         
@@ -28,10 +28,17 @@ def fs_update_response(project_code, session_id, index, audio_url, response_type
         
         data_to_update = {
             f"{field_path}.audio_url": audio_url,
-            f"{field_path}.updated_at": datetime.datetime.utcnow(),
+            f"{field_path}.uploaded_at": datetime.datetime.utcnow(),
             "last_interaction": datetime.datetime.utcnow(),
             "status": "in_progress"
         }
+
+        if duration_seconds is not None:
+            try:
+                dur = float(duration_seconds)
+                data_to_update[f"{field_path}.duration_seconds"] = round(dur, 2)
+            except (ValueError, TypeError):
+                print(f"⚠️ Invalid duration_seconds for {session_id}: {duration_seconds}")
 
         if response_type == "prompt":
              data_to_update["current_prompt_index"] = int(index)

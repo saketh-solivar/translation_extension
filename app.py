@@ -188,6 +188,7 @@ async def save_audio(
     is_prompt: bool = Form(False), 
     is_additional: bool = Form(False),
     additional_index: int = Form(...),
+    duration_seconds: float = Form(0.0),
 ):
     """
     Save the uploaded audio file to GCP Storage.
@@ -230,10 +231,11 @@ async def save_audio(
         fs_update_response(
             project_code=project_code, 
             session_id=session_id,
-            index=prompt_index,         
+            index=prompt_index,     
             audio_url=response_url,
-            response_type=response_type,      
-            additional_index=additional_index
+            response_type=response_type,
+            additional_index=additional_index,     
+            duration_seconds=duration_seconds
         )
 
         SPREADSHEET_ID = get_sheet_id_from_master(MASTER_SPREADSHEET_ID, project_code)
@@ -268,7 +270,7 @@ async def save_audio(
         # else :
         #     print(f"Responses Not Completed for session {session_id}")
 
-        return {"message": "Audio uploaded successfully"}
+        return {"message": "Audio uploaded successfully", "response_url": response_url}
 
 
     except Exception as e:
