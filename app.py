@@ -26,18 +26,21 @@ BUCKET_NAME = "userrecordings"
 # Initialize Google Cloud Storage Client
 storage_client = storage.Client(project="story-legacy-442314")
 
-class SpreadsheetConfig:
-    def __init__(self):
-        self.SPREADSHEET_ID = None
+PROJECT_CACHE = {}
+CACHE_TTL = 300  # 5 minutes
 
-    def set_spreadsheet_id(self, sheet_id):
-        self.SPREADSHEET_ID = sheet_id
+def get_cached_sheet_id(project_code):
+    now = time.time()
 
-    def get_spreadsheet_id(self):
-        return self.SPREADSHEET_ID
+    if project_code in PROJECT_CACHE:
+        sheet_id, timestamp = PROJECT_CACHE[project_code]
+        if now - timestamp < CACHE_TTL:
+            return sheet_id
 
-# Create a single instance of the class
-spreadsheet_config = SpreadsheetConfig()
+    sheet_id = get_sheet_id_from_master(MASTER_SPREADSHEET_ID, project_code)
+    if sheet_id:
+        PROJECT_CACHE[project_code] = (sheet_id, now)
+    return sheet_id
 
 def get_device_type(user_agent):
     # user_agent = parse(user_agent_string)
@@ -70,10 +73,7 @@ async def serve_home(request: Request):
     if not project_code or not session_id:
         return HTMLResponse(content="<h2>⚠️ Incorrect URL. Please check your URL</h2>", status_code=400)
     
-    SPREADSHEET_ID = get_sheet_id_from_master(MASTER_SPREADSHEET_ID, project_code)
-    spreadsheet_config.set_spreadsheet_id(SPREADSHEET_ID)
-    print(f"Updated Global SHEET_ID: {spreadsheet_config.get_spreadsheet_id()}")
-
+    SPREADSHEET_ID = get_cached_sheet_id(project_code)
     if not SPREADSHEET_ID:
         return HTMLResponse(content="<h2>⚠️ Project not found. Please check your project code.</h2>", status_code=400)
     print(f"Updated Global SHEET_ID: {SPREADSHEET_ID}")  # Debugging print
@@ -127,7 +127,7 @@ async def serve_home(request: Request):
 def get_prompts(project_code: str = Query(...)):
     try:
         print("In prompts function pc =", project_code)
-        SPREADSHEET_ID = get_sheet_id_from_master(MASTER_SPREADSHEET_ID, project_code)
+        SPREADSHEET_ID = get_cached_sheet_id(project_code)
         if not SPREADSHEET_ID:
             raise HTTPException(status_code=400, detail="Spreadsheet ID not set.")
         print("SPREADSHEET_ID is:", SPREADSHEET_ID)
