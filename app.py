@@ -197,6 +197,11 @@ async def save_audio(
         print("In save_Audio function")
         print("Audio type is", file_extension)
         print(f"Is prompt: {is_prompt}")
+        SPREADSHEET_ID = get_cached_sheet_id(project_code)
+        if not SPREADSHEET_ID:
+            raise HTTPException(status_code=400, detail="Spreadsheet ID not set.")
+
+        print("SPREADSHEET_ID is:",SPREADSHEET_ID)
 
         # Define the file path in GCP Storage, now different for prompts and questions
         if is_prompt:
@@ -260,19 +265,7 @@ async def save_audio(
             print("Session ID not found in the sheet")
             return {"error": "Session ID not found in the sheet"}
 
-        # update_response_count_in_sheet(spreadsheet_id=SPREADSHEET_ID, session_id=session_id)
-        
-        # resume_state = get_last_answered_index(SPREADSHEET_ID, "URLs", session_id)
-        # print("🔎 Resume state after update:", resume_state)
-        # if resume_state.get("phase") == "complete":
-        #     update_status_to_responded(SPREADSHEET_ID, session_id)
-        #     print(f"✅ Status instantly updated for session {session_id}")
-        # else :
-        #     print(f"Responses Not Completed for session {session_id}")
-
-        return {"message": "Audio uploaded successfully", "response_url": response_url}
-
-
+        return {"message": "Audio uploaded successfully"}
     except Exception as e:
         print(str(e))
         return {"error": str(e)}
@@ -293,8 +286,7 @@ async def erase_audio(
         print("In erase_audio")
         print(f"is_prompt: {is_prompt}, is_additional: {is_additional}, prompt_index: {prompt_index}, additional_index: {additional_index}")
         
-        SPREADSHEET_ID = get_sheet_id_from_master(MASTER_SPREADSHEET_ID, project_code)
-        spreadsheet_config.set_spreadsheet_id(SPREADSHEET_ID)
+        SPREADSHEET_ID = get_cached_sheet_id(project_code)
         if not SPREADSHEET_ID:
             raise HTTPException(status_code=400, detail="Spreadsheet ID not set.")
 
@@ -329,7 +321,7 @@ async def erase_audio(
 @app.post("/send_mail")
 async def send_mail( project_code: str = Form(...),session_id: str = Form(...),):
     
-    SPREADSHEET_ID = spreadsheet_config.get_spreadsheet_id()
+    SPREADSHEET_ID = get_cached_sheet_id(project_code)
     if not SPREADSHEET_ID:
         raise HTTPException(status_code=400, detail="Spreadsheet ID not set.")
     print("SPREADSHEET_ID is:",SPREADSHEET_ID)
