@@ -1,4 +1,5 @@
 import os
+import json
 import pickle
 import google.auth
 from google.auth.transport.requests import Request
@@ -11,8 +12,9 @@ from google.oauth2.service_account import Credentials
 from helperfunctions import find_session_row, get_prompt_column_index, get_aqg_column_index, get_question_column_index, convert_to_column_letter
 
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets","https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-SERVICE_ACCOUNT_FILE = "credentials.json"
-
+# SERVICE_ACCOUNT_FILE = "credentials.json"
+# creds = Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=SCOPES)
+SERVICE_ACCOUNT_FILE = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
 creds = Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=SCOPES)
 client = gspread.authorize(creds)
 
@@ -66,7 +68,8 @@ def get_sheets_service():
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
-            creds, _ = google.auth.load_credentials_from_file('credentials.json', SCOPES)
+            # creds, _ = google.auth.load_credentials_from_file('credentials.json', SCOPES)
+            creds, _ = google.auth.load_credentials_from_file(os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"), SCOPES)
         
         # Save the credentials for the next run
         with open('token.pickle', 'wb') as token:
@@ -129,7 +132,8 @@ def check_session_exists(spreadsheet_id, sheet_name, session_id):
     Check if the session ID exists in the given Google Sheet.
     """
     try:
-        creds = Credentials.from_service_account_file("credentials.json", scopes=["https://www.googleapis.com/auth/spreadsheets"])
+        creds = Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=["https://www.googleapis.com/auth/spreadsheets"])
+        # creds = Credentials.from_service_account_file("credentials.json", scopes=["https://www.googleapis.com/auth/spreadsheets"])
         client = gspread.authorize(creds)
         worksheet = client.open_by_key(spreadsheet_id).worksheet(sheet_name)
 

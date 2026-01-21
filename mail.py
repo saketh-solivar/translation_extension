@@ -5,9 +5,11 @@ from email.message import EmailMessage
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 import time
+import os
 
 sheet_name = "URLs"
-gc = gspread.service_account(filename="credentials.json")
+# gc = gspread.service_account(filename="/code/credentials.json")
+gc = gspread.service_account(filename=os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"))
 
 # Email configuration
 SMTP_SERVER = "smtp.gmail.com"
@@ -51,7 +53,8 @@ def grant_access_to_files(recipient_emails):
 
 def fetch_recipient_emails(project_code,google_sheet_id):
     """Fetches emails from the project info sheet where the ProjectCode matches."""
-    creds = Credentials.from_service_account_file("credentials.json")
+    # creds = Credentials.from_service_account_file("credentials.json")
+    creds = Credentials.from_service_account_file(os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"))
     service = build("sheets", "v4", credentials=creds)
 
     RANGE_NAME = "ProjectInfo!A4:B4"  # Assuming Project Code is in column A and Emails are in column D
@@ -74,7 +77,8 @@ def col_index_to_letter(index):
 def fetch_response_links(session_id, google_sheet_id, initial_wait=120, max_wait_time=600, check_interval=30):
     """Fetches response and transcript URLs for a session_id from the Google Sheet dynamically."""
 
-    creds = Credentials.from_service_account_file("credentials.json")
+    # creds = Credentials.from_service_account_file("credentials.json")
+    creds = Credentials.from_service_account_file(os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"))
     service = build("sheets", "v4", credentials=creds)
     sheet = service.spreadsheets()
 
