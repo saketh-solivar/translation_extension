@@ -243,13 +243,6 @@ async def save_audio(
             duration_seconds=duration_seconds
         )
 
-        SPREADSHEET_ID = get_sheet_id_from_master(MASTER_SPREADSHEET_ID, project_code)
-        if not SPREADSHEET_ID:
-            raise HTTPException(status_code=400, detail="Spreadsheet ID not set.")
-
-        spreadsheet_config.set_spreadsheet_id(SPREADSHEET_ID) 
-        print("SPREADSHEET_ID is:",SPREADSHEET_ID)
-
         updated = update_response_in_sheet(
             spreadsheet_id=SPREADSHEET_ID,
             sheet_name="URLs",
@@ -309,7 +302,7 @@ async def erase_audio(
             additional_index=additional_index if is_additional else None
         )
         # Now update the response count
-        update_response_count_in_sheet(SPREADSHEET_ID, session_id)
+        # update_response_count_in_sheet(SPREADSHEET_ID, session_id)
         if not updated:
             return {"error": "Session ID not found in the sheet"}
         
