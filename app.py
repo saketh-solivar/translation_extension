@@ -233,32 +233,38 @@ async def save_audio(
         response_url = f"https://storage.cloud.google.com/{BUCKET_NAME}/{file_path}"
         print("response url", response_url)
         
-        fs_update_response(
-            project_code=project_code, 
-            session_id=session_id,
-            index=prompt_index,     
-            audio_url=response_url,
-            response_type=response_type,
-            additional_index=additional_index,     
-            duration_seconds=duration_seconds
-        )
+        try:
+            fs_update_response(
+                project_code=project_code, 
+                session_id=session_id,
+                index=prompt_index,     
+                audio_url=response_url,
+                response_type=response_type,
+                additional_index=additional_index,     
+                duration_seconds=duration_seconds
+            )
+            firestore_success = True
+        except Exception as e:
+            firestore_success = False
+            print("❌ Firestore failed:", e)
 
-        updated = update_response_in_sheet(
-            spreadsheet_id=SPREADSHEET_ID,
-            sheet_name="URLs",
-            session_id=session_id,
-            response_type=response_type,
-            prompt_index=prompt_index,
-            new_value=response_url,
-            additional_index=additional_index if is_additional else None
-        )
+        try:
+            updated = update_response_in_sheet(
+                spreadsheet_id=SPREADSHEET_ID,
+                sheet_name="URLs",
+                session_id=session_id,
+                response_type=response_type,
+                prompt_index=prompt_index,
+                new_value=response_url,
+                additional_index=additional_index if is_additional else None
+            )
+        except Exception as e:
+            print("❌ Sheet update failed:", e)
 
-        print("value of updated", updated)
-        if not updated:
-            print("Session ID not found in the sheet")
-            return {"error": "Session ID not found in the sheet"}
-
-        return {"message": "Audio uploaded successfully"}
+        if firestore_success:
+            return {"message": "Audio uploaded successfully"}
+        else:
+            return {"error": "Failed to save audio"}
     except Exception as e:
         print(str(e))
         return {"error": str(e)}
