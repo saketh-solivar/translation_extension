@@ -5,12 +5,18 @@ from firebase_admin import firestore
 import datetime
 import time 
 import os
+import json
 
 # Ensure we only initialize once
 if not firebase_admin._apps:
-    # Use your service account json
-    # cred = credentials.Certificate("credentials.json") 
-    cred = credentials.Certificate(os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"))
+    # Load credentials from env var (Cloud Run passes secret content as env var value)
+    creds_data = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+    if creds_data and creds_data.startswith('{'):
+        # Parse JSON string from env var
+        cred = credentials.Certificate(json.loads(creds_data))
+    else:
+        # Fallback: try loading from file path
+        cred = credentials.Certificate(creds_data)
     firebase_admin.initialize_app(cred)
 
 db = firestore.client()

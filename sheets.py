@@ -17,10 +17,17 @@ import os
 from helperfunctions import find_session_row, get_prompt_column_index, get_aqg_column_index, get_question_column_index, convert_to_column_letter
 
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets","https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-# SERVICE_ACCOUNT_FILE = "credentials.json"
+
+# Load credentials from env var (Cloud Run passes secret content as env var value)
+creds_data = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+if creds_data and creds_data.startswith('{'):
+    # Parse JSON string from env var
+    creds = Credentials.from_service_account_info(json.loads(creds_data), scopes=SCOPES)
+else:
+    # Fallback: try loading from file path
+    creds = Credentials.from_service_account_file(creds_data, scopes=SCOPES)
+# SERVICE_ACCOUNT_FILE = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
 # creds = Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=SCOPES)
-SERVICE_ACCOUNT_FILE = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
-creds = Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=SCOPES)
 client = gspread.authorize(creds)
 
 def get_sheet_id_from_master(master_sheet_id, project_code):
@@ -59,10 +66,19 @@ def get_sheet_id_from_master(master_sheet_id, project_code):
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
 def get_sheets_service():
-    creds = service_account.Credentials.from_service_account_file(
-        os.environ["GOOGLE_APPLICATION_CREDENTIALS"],
-        scopes=SCOPES
-    )
+    creds_data = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+    if creds_data and creds_data.startswith('{'):
+        # Parse JSON string from env var
+        creds = service_account.Credentials.from_service_account_info(
+            json.loads(creds_data),
+            scopes=SCOPES
+        )
+    else:
+        # Fallback: try loading from file path
+        creds = service_account.Credentials.from_service_account_file(
+            creds_data,
+            scopes=SCOPES
+        )
     return build("sheets", "v4", credentials=creds)
 
 def ensure_language_column(spreadsheet_id, sheet_name, lang):
@@ -111,7 +127,10 @@ def ensure_language_column(spreadsheet_id, sheet_name, lang):
 
 
 from google.cloud import translate_v2 as translate
-translate_client = translate.Client()
+
+def get_translate_client():
+    """Lazy-load translate client to avoid credential issues at import time."""
+    return translate.Client()
 
 def get_all_questions_from_sheet(
     spreadsheet_id,
@@ -157,7 +176,7 @@ def get_all_questions_from_sheet(
 
         # 🔹 Translate only if needed
         if lang != "en" and not lang_text.strip():
-            translated = translate_client.translate(
+            translated = get_translate_client().translate(
                 base_text,
                 source_language="en",
                 target_language=lang,
@@ -559,10 +578,17 @@ import os
 
 
 def get_available_languages(spreadsheet_id: str):
-    creds = Credentials.from_service_account_file(
-        os.environ["GOOGLE_APPLICATION_CREDENTIALS"],
-        scopes=["https://www.googleapis.com/auth/spreadsheets"]
-    )
+    creds_data = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+    if creds_data and creds_data.startswith('{'):
+        creds = Credentials.from_service_account_info(
+            json.loads(creds_data),
+            scopes=["https://www.googleapis.com/auth/spreadsheets"]
+        )
+    else:
+        creds = Credentials.from_service_account_file(
+            creds_data,
+            scopes=["https://www.googleapis.com/auth/spreadsheets"]
+        )
 
     client = gspread.authorize(creds)
     worksheet = client.open_by_key(spreadsheet_id).worksheet("AllQuestions")

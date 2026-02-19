@@ -6,10 +6,21 @@ from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 import time
 import os
+import json
 
 sheet_name = "URLs"
-# gc = gspread.service_account(filename="/code/credentials.json")
-gc = gspread.service_account(filename=os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"))
+
+# Handle case where GOOGLE_APPLICATION_CREDENTIALS contains JSON content instead of file path
+creds_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+if creds_path and creds_path.startswith("{"):
+    # It's JSON content, write it to a temp file
+    temp_creds_path = "/tmp/credentials.json"
+    with open(temp_creds_path, "w") as f:
+        f.write(creds_path)
+    gc = gspread.service_account(filename=temp_creds_path)
+else:
+    # It's a file path
+    gc = gspread.service_account(filename=creds_path or "/code/credentials.json")
 
 # Email configuration
 SMTP_SERVER = "smtp.gmail.com"
