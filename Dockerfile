@@ -12,8 +12,11 @@ COPY requirements.txt /code
 
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 👇 THIS LINE WAS MISSING
+# Copy application code
 COPY . /code
+
+# Explicitly copy credentials file
+COPY credentials.json /code/credentials.json
 
 EXPOSE 8080
 

@@ -18,9 +18,12 @@ if creds_path and creds_path.startswith("{"):
     with open(temp_creds_path, "w") as f:
         f.write(creds_path)
     gc = gspread.service_account(filename=temp_creds_path)
-else:
+elif creds_path:
     # It's a file path
-    gc = gspread.service_account(filename=creds_path or "/code/credentials.json")
+    gc = gspread.service_account(filename=creds_path)
+else:
+    # Fall back to default location
+    gc = gspread.service_account(filename="/code/credentials.json")
 
 # Email configuration
 SMTP_SERVER = "smtp.gmail.com"

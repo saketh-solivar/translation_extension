@@ -23,9 +23,12 @@ creds_data = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
 if creds_data and creds_data.startswith('{'):
     # Parse JSON string from env var
     creds = Credentials.from_service_account_info(json.loads(creds_data), scopes=SCOPES)
-else:
-    # Fallback: try loading from file path
+elif creds_data:
+    # It's a file path
     creds = Credentials.from_service_account_file(creds_data, scopes=SCOPES)
+else:
+    # Fall back to default location
+    creds = Credentials.from_service_account_file("/code/credentials.json", scopes=SCOPES)
 # SERVICE_ACCOUNT_FILE = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
 # creds = Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=SCOPES)
 client = gspread.authorize(creds)
@@ -584,9 +587,14 @@ def get_available_languages(spreadsheet_id: str):
             json.loads(creds_data),
             scopes=["https://www.googleapis.com/auth/spreadsheets"]
         )
-    else:
+    elif creds_data:
         creds = Credentials.from_service_account_file(
             creds_data,
+            scopes=["https://www.googleapis.com/auth/spreadsheets"]
+        )
+    else:
+        creds = Credentials.from_service_account_file(
+            "/code/credentials.json",
             scopes=["https://www.googleapis.com/auth/spreadsheets"]
         )
 
