@@ -5,711 +5,219 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Story Legacy</title>
     <style>
-        /* Global Styles */
         body {
-            font-family: 'Arial', sans-serif;
+            font-family: Arial, sans-serif;
             margin: 0;
-            padding: 0;
             background-color: #f4f4f9;
-            color: #333;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
         }
         header {
             background-color: rgb(69, 205, 239);
             font-weight: bold;
             font-size: 40px;
-            height: 10%;
-            margin-bottom: 2%;
+            padding: 20px;
         }
-        #title {
-            margin-left: 2%;
-        }
-
-        /* Container */
         .main-container {
             display: flex;
-            flex-direction: column; /* Stack containers vertically */
-            width: 90%;
-            align-items: center; /* Center both containers */
+            flex-direction: column;
+            align-items: center;
         }
-
-        /* Prompt Section */
-        .prompt-container {
-            width: 80%; /* Adjusted width */
+        .prompt-container, .audio-container {
+            width: 80%;
+            background: white;
             padding: 20px;
-            background: #fff;
             border-radius: 10px;
-            box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
-            margin-bottom: 20px; /* Added space between containers */
+            margin-top: 20px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
         }
-
-        /* Audio Recorder Section */
-        .audio-container {
-            width: 80%; /* Adjusted width */
-            padding: 20px;
-            background: #fff;
-            border-radius: 10px;
-            box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
-        }
-
-        /* Buttons */
         .button {
-            display: inline-block;
             padding: 10px 20px;
-            margin: 10px;
-            font-size: 16px;
-            font-weight: bold;
-            color: #fff;
             background-color: #6c63ff;
+            color: white;
             border: none;
             border-radius: 5px;
+            font-weight: bold;
             cursor: pointer;
-            transition: background-color 0.3s ease, transform 0.2s ease;
         }
-
-        .button:hover {
-            background-color: #5548c9;
-            transform: scale(1.05);
-        }
-
-        .button:active {
-            background-color: #4237a3;
-        }
-
         .stop-button {
             background-color: red;
-            color: white;
-            font-weight: bold;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 16px;
-            margin-left: 10%;
         }
-
-        .stop-button:disabled {
-            background-color: #d2a5a3;
-            cursor: not-allowed;
-        }
-
-        .stop-button:hover {
-            background-color: red;
-            transform: scale(1.05);
-        }
-
-        /* Audio Player */
-        audio {
-            width: 100%;
-            margin-top: 20px;
-        }
-
-        /* Footer */
-        footer {
-            text-align: center;
-            margin-top: 20px;
-            font-size: 14px;
-            color: #888;
-        }
-
-        #recordingIndicator {
-            font-family: Arial, sans-serif;
-            color: #ff0000;
-            font-size: 16px;
-            text-align: center;
-            margin-top: 20px;
-        }
-
         #instructionModal {
             position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.6);
-            display: flex;
-            justify-content: center;
+            inset: 0;
+            background: rgba(0,0,0,0.6);
+            display: none;
             align-items: center;
+            justify-content: center;
             z-index: 1000;
         }
-
-        #instructionText {
-            font-size: 28px; /* or 24px, or smaller like 14px */
-            line-height: 1.6;
-        }  
-        
-        #closeInstruction {
-            display: block;
-            margin: 20px auto 0 auto; /* top, auto left/right, bottom, auto left/right */
-        }        
-        
         #instructionContent {
-            background-color: white;
-            border-radius: 20px;
+            background: white;
             padding: 30px;
+            border-radius: 20px;
             max-width: 900px;
             width: 90%;
-            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.2);
-            text-align: left;
-            overflow-y: auto;
-            max-height: 90%;
+        }
+        #instructionText {
+            font-size: 22px;
+            line-height: 1.6;
         }
     </style>
 </head>
+
 <body>
-    <header>
-        Story Legacy
-    </header>
-    <div class="main-container">
-        <div id="instructionModal" style="display: none;">
-            <div id="instructionContent">
-                <div id="instructionText"></div>
-                <button id="closeInstruction" class="button">Close</button>
-            </div>     
+<header>Story Legacy</header>
+
+<div style="margin:20px;text-align:right;">
+  <label for="langSelect"><b>Language:</b></label>
+  <select id="langSelect"></select>
+</div>
+
+
+
+<div class="main-container">
+
+    <!-- Instructions Modal -->
+    <div id="instructionModal">
+        <div id="instructionContent">
+            <div id="instructionText"></div>
+            <button id="closeInstruction" class="button">Close</button>
         </div>
-
-        <div class="prompt-container" id="promptSection" style="display: block;">
-            <div id="prompt"></div>
-        </div>
-
-        <div class="audio-container" id="audioSection" style="display: block;">
-            <button id="start" class="button" onclick="startRecording()">Start Recording</button>
-            <button id="stop" class="stop-button" onclick="stopRecording()" style="display: none;">Stop Recording</button>
-            <div id="recordingIndicator" style="display: none;">
-                <img src="https://media.giphy.com/media/3o7abKhOpu0NwenH3O/giphy.gif" alt="Recording in progress" style="width: 100px; height: auto;">
-                <p id="timer">Recording: 0:00</p>
-            </div>
-            <p id="audioDuration"></p> 
-            <audio id="audioPlayer" controls hidden></audio>
-
-            <button id="erase" class="button" onclick="eraseRecording()" style="display: none;">Re-Record Current Response</button>
-        </div>
-
-        <button id="next" class="button" style="display: none;"></button>
-
     </div>
-    <script>
-        // {{INJECT_START_STATE}}
-        let prompts = [];
-        let questions = [];
-        let additionalQuestionsMap = {};
-        let currentPromptIndex = 0; // This is our ARRAY index
-        let isPromptPhase = true;
-        let isAdditionalPhase = false;
-        let additionalIndex = 0; // This is the AQG array index
-        let mediaRecorder;
-        let audioChunks = [];
-        let recordingTimer;
-        let timerCount = 0;
-        let timerInterval;
-        let micAccessGranted = false;
-        let wakeLock = null;
 
-        async function requestWakeLock() {
-            try {
-                wakeLock = await navigator.wakeLock.request("screen");
-                console.log("Screen wake lock is active.");
-                
-                wakeLock.addEventListener("release", () => {
-                    console.log("Screen wake lock was released.");
-                });
-            } catch (err) {
-                console.error("Failed to acquire wake lock:", err);
-            }
+    <div class="prompt-container">
+        <div id="prompt"></div>
+    </div>
+
+    <div class="audio-container" id="audioSection">
+        <button id="start" class="button" onclick="startRecording()">Start Recording</button>
+        <button id="stop" class="button stop-button" onclick="stopRecording()" style="display:none;">Stop</button>
+        <audio id="audioPlayer" controls hidden></audio>
+        <button id="erase" class="button" onclick="eraseRecording()" style="display:none;">Re-record</button>
+    </div>
+
+    <button id="next" class="button" style="display:none;">Next</button>
+</div>
+
+<script>
+    // {{INJECT_START_STATE}}
+
+    let prompts = [];
+    let questions = [];
+    let additionalQuestionsMap = {};
+    let currentPromptIndex = 0;
+    let isPromptPhase = true;
+    let isAdditionalPhase = false;
+    let additionalIndex = 0;
+
+    /* 🔑 LANGUAGE FROM URL */
+    const params = new URLSearchParams(window.location.search);
+    const lang = params.get("lang") || "en";
+
+    function getQueryParameter(name) {
+        return new URLSearchParams(window.location.search).get(name);
+    }
+
+    async function initializeSession() {
+        await fetchPrompts();
+    }
+
+    async function fetchPrompts() {
+        const project_code = getQueryParameter("pc");
+
+        const response = await fetch(
+            `/prompts_and_questions?project_code=${project_code}&lang=${lang}`
+        );
+
+        const data = await response.json();
+
+        prompts = data.prompts;
+        questions = data.questions;
+        additionalQuestionsMap = data.additional_questions;
+        const instructions = data.instructions;
+
+        if (instructions) {
+            document.getElementById("instructionText").innerHTML = instructions;
+            document.getElementById("instructionModal").style.display = "flex";
         }
 
-        // Request microphone access on page load
-        async function requestMicAccess() {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                micAccessGranted = true;
-                stream.getTracks().forEach(track => track.stop());
-            } catch (error) {
-                micAccessGranted = false;
-                alert("Microphone access is required to record audio. Please enable it in your browser settings.");
-                console.error("Microphone access denied:", error);
-            }
+        setInitialState();
+        displayContent();
+    }
+
+    function setInitialState() {
+  if (typeof resumeState !== "undefined") {
+    isPromptPhase = resumeState.phase === "prompt" || resumeState.phase === "aqg";
+    isAdditionalPhase = resumeState.phase === "aqg";
+    currentPromptIndex = resumeState.prompt_index || 0;
+    additionalIndex = resumeState.additional_index || 0;
+  } else {
+    isPromptPhase = true;
+    isAdditionalPhase = false;
+    currentPromptIndex = 0;
+    additionalIndex = 0;
+  }
+}
+
+
+    function displayContent() {
+        const promptEl = document.getElementById("prompt");
+        const nextBtn = document.getElementById("next");
+
+        let item = isPromptPhase ? prompts[currentPromptIndex] : questions[currentPromptIndex];
+
+        if (!item) {
+            showThankYou();
+            return;
         }
 
-        // This is the main entry point, called by onpageshow
-        async function initializeSession() {
-            await requestMicAccess();
-            await fetchPrompts(); 
-        }
-    
-        // Fetch prompts and questions and instructions from FastAPI
-        async function fetchPrompts() {
-            let project_code = getQueryParameter('pc');
-            console.log("pc is "+getQueryParameter('pc'))
+        promptEl.innerHTML = `<h3>${item.Questions}</h3>`;
+        nextBtn.style.display = "inline-block";
+    }
 
-            const response = await fetch(`/prompts_and_questions?project_code=${project_code}`, {
-                method: "GET",
-            });
-            const data = await response.json();
-            prompts = data.prompts;
-            questions = data.questions;
-            instructions = data.instructions;
-            additionalQuestionsMap = data.additional_questions;
-            
-            // Show instructions modal on load
-            if (instructions && instructions.length > 0) {
-                document.getElementById("instructionText").innerHTML = instructions;
-                document.getElementById("instructionModal").style.display = "flex";
-            }
-            
-            setInitialState();
-            displayContent(); 
-        }
+    function showThankYou() {
+        document.body.innerHTML = "<h2 style='text-align:center;margin-top:20%'>Thank you for participating!</h2>";
+    }
 
-        function setInitialState() {
-            // resumeState is injected from app.py
-            isPromptPhase = (resumeState.phase === "prompt" || resumeState.phase === "aqg");
-            isAdditionalPhase = (resumeState.phase === "aqg");
+    document.getElementById("next").addEventListener("click", () => {
+        currentPromptIndex++;
+        displayContent();
+    });
 
-            if (resumeState.phase === "prompt" && resumeState.prompt_index === 0 && resumeState.additional_index === 0) {
-                currentPromptIndex = 0;
-                return;
-            }
+    document.getElementById("closeInstruction").onclick = () => {
+        document.getElementById("instructionModal").style.display = "none";
+    };
 
-            if (isPromptPhase) {
-                currentPromptIndex = prompts.findIndex(p => p.data_index === resumeState.prompt_index);
-                if (isAdditionalPhase) {
-                    additionalIndex = resumeState.additional_index;
-                }
+    async function loadLanguages() {
+  const params = new URLSearchParams(window.location.search);
+  const projectCode = params.get("pc");
+  const currentLang = params.get("lang") || "en";
 
-            } else {
-                currentPromptIndex = questions.findIndex(q => q.data_index === resumeState.question_index);
-            }
+  const res = await fetch(`/available_languages?project_code=${projectCode}`);
+  const data = await res.json();
 
-            if (currentPromptIndex === -1) {
-                currentPromptIndex = 0;
-            }
-        }
-    
-        function displayContent() {
-            const promptEl = document.getElementById("prompt");
-            const audioSection = document.getElementById("audioSection");
-            const nextButton = document.getElementById("next");
+  const select = document.getElementById("langSelect");
+  select.innerHTML = "";
 
-            let currentItem, totalLength, labelPrefix;
-            
-            if (isPromptPhase && isAdditionalPhase) {
-                // --- 1. ADDITIONAL QUESTION PHASE ---
-                const parentPrompt = prompts[currentPromptIndex];
-                const promptKey = parentPrompt.PromptID; 
-                const additionalList = additionalQuestionsMap[promptKey];
-                
-                if (additionalList && additionalIndex < additionalList.length) {
-                    const label = `Additional Questions for Prompt ${parentPrompt.PromptID}`;
-                    promptEl.innerHTML = `<h3>${label}</h3><p>${additionalList[additionalIndex]}</p>`;
-                }
-                audioSection.style.display = "block";
-                nextButton.style.display = "none";
-                updateButtonText();
-                return; 
+  data.languages.forEach(lang => {
+    const option = document.createElement("option");
+    option.value = lang.code;
+    option.textContent = lang.label;
+    if (lang.code === currentLang) option.selected = true;
+    select.appendChild(option);
+  });
 
-            } else if (isPromptPhase) {
-                // --- 2. PROMPT PHASE (includes Pagebreaks) ---
-                if (currentPromptIndex >= prompts.length) { 
-                    isPromptPhase = false;
-                    currentPromptIndex = 0; 
-                    displayContent(); 
-                    return;
-                }
-                currentItem = prompts[currentPromptIndex];
-                totalLength = prompts.filter(p => p.data_index !== -1).length;
-                labelPrefix = "Storytelling Prompt";
+  select.onchange = () => {
+    params.set("lang", select.value);
+    window.location.search = params.toString();
+  };
+}
 
-            } else {
-                // --- 3. FOLLOW-UP PHASE (includes Pagebreaks) ---
-                if (currentPromptIndex >= questions.length) { 
-                    showThankYouMessage();
-                    return;
-                }
-                currentItem = questions[currentPromptIndex];
-                totalLength = questions.filter(q => q.data_index !== -1).length;
-                labelPrefix = "Follow-up Question";
-            }
 
-            const itemType = currentItem.Type.toLowerCase();
-            
-            if (itemType === 'pagebreak') {
-                promptEl.innerHTML = `<div style="font-size: 1.2em; line-height: 1.6;">${currentItem.Questions}</div>`;
-                audioSection.style.display = "none"; 
-                nextButton.style.display = "inline-block"; 
-                nextButton.innerText = "Next";
-            } else {
-                const itemText = currentItem.Questions;
-                const label = `${labelPrefix} ${currentItem.data_index + 1} of ${totalLength}`;
-                promptEl.innerHTML = `<h3>${label}</h3><p>${itemText}</p>`;
-                
-                audioSection.style.display = "block"; 
-                nextButton.style.display = "none";
+window.onload = async () => {
+  await loadLanguages();
+  await initializeSession();
+};
+</script>
 
-                updateButtonText();
-            }
-        }
-    
-        async function startRecording() {
-            if (!micAccessGranted) {
-                alert("Microphone access is required. Please enable it in your browser settings.");
-                return;
-            }
-            requestWakeLock();
-
-            audioChunks = [];
-            timerCount = 0;
-            document.getElementById("timer").innerText = "Recording: 0:00";
-            document.getElementById("stop").style.display = "inline-block";
-            document.getElementById("start").style.display = "none";
-            document.getElementById("recordingIndicator").style.display = "block";
-            document.getElementById("audioDuration").innerText = "";
-            startTimer();
-    
-            let mimeType = '';
-            let fileExtension = '';
-    
-            if (MediaRecorder.isTypeSupported('audio/mp4')) {
-                mimeType = 'audio/mp4';
-                fileExtension = 'mp4';
-            } else if (MediaRecorder.isTypeSupported('audio/webm')) {
-                mimeType = 'audio/webm';
-                fileExtension = 'webm';
-            } else {
-                console.error("Neither audio/mp4 nor audio/webm are supported.  Cannot record audio.");
-                alert("Your browser does not support required audio recording formats.");
-                stopTimer();
-                document.getElementById("stop").style.display = "none";
-                document.getElementById("start").style.display = "inline-block";
-                document.getElementById("recordingIndicator").style.display = "none";
-                return;
-            }
-    
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                mediaRecorder = new MediaRecorder(stream, { mimeType: mimeType });
-    
-                mediaRecorder.ondataavailable = event => {
-                    audioChunks.push(event.data);
-                };
-    
-                mediaRecorder.onstop = async () => {
-                    stopTimer();
-                    const audioBlob = new Blob(audioChunks, { type: mimeType });
-                    const audioUrl = URL.createObjectURL(audioBlob);
-                    console.log("MT" + mimeType);
-    
-                    document.getElementById("audioPlayer").src = audioUrl;
-                    document.getElementById("audioPlayer").hidden = false;
-                    document.getElementById("audioPlayer").load();
-    
-                    // document.getElementById("audioDuration").innerText =
-                    //     `Total Duration = ${formatTime(timerCount)}`;
-    
-                    const formData = new FormData();
-                    formData.append("file", audioBlob, `audio.${fileExtension}`);
-                    formData.append("project_code", getQueryParameter('pc'));
-                    formData.append("session_id", getQueryParameter('id'));
-                    formData.append("file_extension", fileExtension);
-
-                    let currentItem = isPromptPhase ? prompts[currentPromptIndex] : questions[currentPromptIndex];
-                    let dataIndex_1based;
-
-                    if (isAdditionalPhase) {
-                        dataIndex_1based = prompts[currentPromptIndex].data_index + 1;
-                    } else {
-                        dataIndex_1based = currentItem.data_index + 1;
-                    }
-
-                    formData.append("prompt_index", dataIndex_1based);
-                    formData.append("is_prompt", isPromptPhase && !isAdditionalPhase); 
-                    formData.append("is_additional", isPromptPhase && isAdditionalPhase);
-                    formData.append("additional_index", isAdditionalPhase ? additionalIndex + 1 : 0);
-                    // Prefer precise float duration from the audio element (fractional seconds).
-                    try {
-                        const audioPlayer = document.getElementById("audioPlayer");
-                        // Ensure metadata has loaded so `duration` is available.
-                        if (isNaN(audioPlayer.duration) || audioPlayer.duration <= 0) {
-                            await new Promise(resolve => {
-                                const onMeta = () => {
-                                    audioPlayer.removeEventListener('loadedmetadata', onMeta);
-                                    resolve();
-                                };
-                                audioPlayer.addEventListener('loadedmetadata', onMeta);
-                                // safety timeout in case event doesn't fire
-                                setTimeout(resolve, 500);
-                            });
-                        }
-                        const durationVal = (!isNaN(audioPlayer.duration) && audioPlayer.duration > 0) ? audioPlayer.duration : timerCount;
-                        formData.append("duration_seconds", String(Number(durationVal).toFixed(2)));
-                    } catch (err) {
-                        // Fallback to integer seconds counted by the timer
-                        formData.append("duration_seconds", String(timerCount));
-                    }
-                    
-                    console.log("Uploading audio...");
-                    const response = await fetch("/save_audio", {
-                        method: "POST",
-                        body: formData
-                    });
-    
-                    const data = await response.json();
-                    console.log(data);
-                    if (response.ok && !data.error) {
-                        alert("Audio uploaded successfully!");
-                        console.log("Audio URL:", data.response_url);
-                    } else {
-                        alert("Error uploading audio: " + data.error);
-                    }
-                };
-    
-                mediaRecorder.start(1000);
-            } catch (error) {
-                console.error("Error accessing the microphone:", error);
-                alert("Error accessing the microphone. Please check your browser settings.");
-                stopTimer();
-                document.getElementById("stop").style.display = "none";
-                document.getElementById("start").style.display = "inline-block";
-                document.getElementById("recordingIndicator").style.display = "none";
-            }
-        }
-    
-        // Stop Recording
-        function stopRecording() {
-            mediaRecorder.stop();
-            stopTimer();
-            document.getElementById("stop").style.display = "none";
-            document.getElementById("erase").style.display = "inline-block";
-            document.getElementById("next").style.display = "inline-block";
-    
-            // Hide the "Next" button if there are no more questions or prompts
-            if (!isPromptPhase && currentPromptIndex === questions.length - 1) {
-                document.getElementById("next").innerText = "Finish";
-            } else if (isPromptPhase && currentPromptIndex === prompts.length - 1) {
-                document.getElementById("next").innerText = "Answer Follow-up Questions";
-            } else {
-                updateButtonText();
-            
-            }
-            let durationElement = document.getElementById("audioDuration");
-            // durationElement.innerText = `Total Duration = ${formatTime(timerCount)}`;
-            durationElement.style.display = "block";
-            document.getElementById("recordingIndicator").style.display = "none";
-        }
-    
-        // Start Timer
-        function startTimer() {
-            timerInterval = setInterval(() => {
-                timerCount++;
-                const minutes = Math.floor(timerCount / 60);
-                const seconds = timerCount % 60;
-                document.getElementById("timer").innerText = `Recording: ${minutes}:${seconds.toString().padStart(2, '0')}`;
-            }, 1000);
-        }
-    
-        // Stop Timer
-        function stopTimer() {
-            clearInterval(timerInterval);
-            document.getElementById("recordingIndicator").style.display = "none";
-        }
-    
-        // Format time in MM:SS
-        function formatTime(seconds) {
-            const minutes = Math.floor(seconds / 60);
-            const secs = seconds % 60;
-            return `${minutes}:${secs.toString().padStart(2, '0')}`;
-        }
-    
-        function getQueryParameter(name) {
-            const urlParams = new URLSearchParams(window.location.search);
-            return urlParams.get(name);
-        }
-    
-        async function eraseRecording() {
-            if (!confirm("Are you sure you want to re-record this response?")) {
-                return;
-            }
-    
-            let projectCode = getQueryParameter("pc");
-            let sessionId = getQueryParameter("id");
-            
-            let currentItem = isPromptPhase ? prompts[currentPromptIndex] : questions[currentPromptIndex];
-            let dataIndex_1based;
-
-            if (isAdditionalPhase) {
-                dataIndex_1based = prompts[currentPromptIndex].data_index + 1;
-            } else {
-                dataIndex_1based = currentItem.data_index + 1;
-            }
-            let isAdditional = isPromptPhase && isAdditionalPhase;
-            let additionalIdx = isAdditional ? additionalIndex + 1 : 0;
-            let isPromptFlag = isPromptPhase && !isAdditionalPhase;
-    
-            try {
-                const response = await fetch(`/erase_audio?project_code=${projectCode}&session_id=${sessionId}&prompt_index=${dataIndex_1based}&is_prompt=${isPromptFlag}&is_additional=${isAdditional}&additional_index=${additionalIdx}`,
-                    {
-                        method: "DELETE",
-                    }
-                );
-    
-                const data = await response.json();
-                if (response.ok && !data.error) {
-    
-                    // Reset audio player
-                    let audioPlayer = document.getElementById("audioPlayer");
-                    audioPlayer.src = "";
-                    audioPlayer.hidden = true;
-    
-                    // Hide erase button and show record button
-                    document.getElementById("erase").style.display = "none";
-                    document.getElementById("start").style.display = "inline-block";
-                    document.getElementById("next").style.display = "none";
-                    document.getElementById("audioDuration").style.display = "none";
-                    updateButtonText();
-    
-                } else {
-                    alert("Error erasing response: " + data.error);
-                }
-            } catch (error) {
-                console.error("Error erasing response:", error);
-            }
-        }
-        
-        function updateButtonText() {
-            const nextBtn = document.getElementById("next");
-            
-            if (isPromptPhase && isAdditionalPhase) {
-                const parentPrompt = prompts[currentPromptIndex];
-                const promptKey = parentPrompt.PromptID;
-                const additionalList = additionalQuestionsMap[promptKey];
-
-                if (additionalIndex === additionalList.length - 1) {
-                    nextBtn.innerText = "Next Prompt";
-                } else {
-                    nextBtn.innerText = "Next Additional Question";
-                }
-
-            } else if (isPromptPhase) {
-                const currentItem = prompts[currentPromptIndex];
-                const promptKey = currentItem.PromptID;
-                const additionalList = additionalQuestionsMap[promptKey];
-                const hasAQG = additionalList && additionalList.length > 0;
-
-                if (currentPromptIndex === prompts.length - 1 && !hasAQG) {
-                    nextBtn.innerText = "Answer Follow-up Questions";
-                } else {
-                    nextBtn.innerText = "Next Prompt";
-                }
-
-            } else {
-                if (currentPromptIndex === questions.length - 1) {
-                    nextBtn.innerText = "Finish";
-                } else {
-                    nextBtn.innerText = "Next Follow-up Question";
-                }
-            }
-        }
-      
-
-        document.getElementById("next").addEventListener("click", function () {
-            
-            let currentItem = isPromptPhase ? prompts[currentPromptIndex] : questions[currentPromptIndex];
-            let wasPagebreak = currentItem.Type.toLowerCase() === 'pagebreak';
-            const promptKey = (isPromptPhase) ? prompts[currentPromptIndex].PromptID : "0";
-
-            if (isPromptPhase && isAdditionalPhase) {
-                // We just finished an AQG
-                additionalIndex++;
-                const additionalList = additionalQuestionsMap[promptKey];
-        
-                if (!additionalList || additionalIndex >= additionalList.length) {
-                    isAdditionalPhase = false;
-                    currentPromptIndex++; 
-                }
-        
-            } else if (isPromptPhase && !isAdditionalPhase) {
-                if (wasPagebreak) { 
-                    currentPromptIndex++; 
-                } else {
-                    // Check for AQGs using PromptID
-                    const additionalList = additionalQuestionsMap[promptKey];
-                    if (additionalList && additionalList.length > 0) {
-                        isAdditionalPhase = true;
-                        additionalIndex = 0; 
-                    } else {
-                        currentPromptIndex++; 
-                    }
-                }
-            } else {
-                currentPromptIndex++;
-            }
-        
-            displayContent();
-            
-            if (!wasPagebreak) { 
-                resetUIForNext();
-            }
-        });        
-                
-        function resetUIForNext() {
-                document.getElementById("erase").style.display = "none";
-                document.getElementById("start").style.display = "inline-block";
-                document.getElementById("audioDuration").style.display = "none";
-    
-                // Reset audio player
-                let audioPlayer = document.getElementById("audioPlayer");
-                audioPlayer.src = "";
-                audioPlayer.hidden = true;
-            }
-
-        function showThankYouMessage() {
-            document.body.innerHTML = `
-                <div style="text-align: center; font-size: 20px; margin-top: 20%;">
-                    <h2>Thank you for your participation in this research, all of your stories have been submitted.
-                         We place great value on your stories and will treat them with the respect they deserve.</h2>
-                </div>
-            `;
-            releaseMicrophone();
-            const formData = new FormData();
-            formData.append("project_code", getQueryParameter('pc'));
-            formData.append("session_id", getQueryParameter('id'));
-            // Call the FastAPI send_mail endpoint
-            fetch("/send_mail", {
-                method: "POST",
-                body: formData, 
-            })
-            .then(response => response.json())
-            .then(data => console.log("Email sent:", data))
-            .catch(error => console.error("Error sending email:", error));
-        }
-    
-        function releaseMicrophone() {
-            if (mediaRecorder && mediaRecorder.state !== "inactive") {
-                mediaRecorder.stream.getTracks().forEach(track => track.stop());  // Stop the microphone
-            }
-            console.log("Microphone has been disabled.");
-        }
-    
-        window.onpageshow = function(event) {
-            if (event.persisted) {
-                window.location.reload(true);
-            } else {
-                initializeSession(); 
-            }
-        };
-
-        document.addEventListener("DOMContentLoaded", function () {
-            const closeBtn = document.getElementById("closeInstruction");
-            const modal = document.getElementById("instructionModal");
-
-            if (closeBtn && modal) {
-                closeBtn.addEventListener("click", function () {
-                    modal.style.display = "none";
-                });
-            }
-        });
-    </script>
 </body>
 </html>

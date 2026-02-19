@@ -1,40 +1,61 @@
 from fastapi import FastAPI, HTTPException, Request, File, UploadFile, Form, Query
-from sheets import get_all_questions_from_sheet, update_status_to_responded,check_session_exists,update_response_in_sheet,get_last_answered_index,update_logs, get_sheet_id_from_master,get_additional_questions_from_sheet, update_response_count_in_sheet,get_instruction_from_sheet
 from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+
+
+from sheets import (
+    get_all_questions_from_sheet,
+    update_status_to_responded,
+    check_session_exists,
+    update_response_in_sheet,
+    get_last_answered_index,
+    update_logs,
+    get_sheet_id_from_master,
+    get_additional_questions_from_sheet,
+    update_status_to_responded,
+    get_instruction_from_sheet,
+    get_sheets_service,
+    get_prompts_from_sheet,
+    get_questions_from_sheet,
+    get_available_languages
+)
+
 from firestore_db import fs_update_response, fs_log_activity
-from fastapi.staticfiles import StaticFiles 
 from google.cloud import storage
-import os
-from pydub import AudioSegment
+from google.cloud import translate_v2 as translate
+from bs4 import BeautifulSoup
+
 from mail import send_email_with_links
-import time
 from user_agents import parse
+from pydub import AudioSegment
+
+import os
+import time
 import datetime
-# import pandas as pd
 import json
+import html
+
 
 app = FastAPI()
 
-
-# Replace with your Google Sheets ID and new unified sheet
-MASTER_SPREADSHEET_ID = '1MlINOHXhzluNczH5Sk_7tIGiaWEnW50sxFdl7iRBxag'
+# ---------------- CONFIG ----------------
+MASTER_SPREADSHEET_ID = '1t0bzj8EAYi_5VNfUmv9lonSa8VxD1UU8c-Z3jlfXJ3c'
 ALL_QUESTIONS_SHEET = 'AllQuestions'
 RESPONSE_RANGE = 'URLs!A1:ZZ'
 
-# GCP Storage Bucket Name
 BUCKET_NAME = "userrecordings"
-# Initialize Google Cloud Storage Client
 storage_client = storage.Client(project="story-legacy-442314")
+translate_client = translate.Client()
 
 PROJECT_CACHE = {}
 CACHE_TTL = 300  # 5 minutes
 
+# ---------------- HELPERS ----------------
 def get_cached_sheet_id(project_code):
     now = time.time()
-
     if project_code in PROJECT_CACHE:
-        sheet_id, timestamp = PROJECT_CACHE[project_code]
-        if now - timestamp < CACHE_TTL:
+        sheet_id, ts = PROJECT_CACHE[project_code]
+        if now - ts < CACHE_TTL:
             return sheet_id
 
     sheet_id = get_sheet_id_from_master(MASTER_SPREADSHEET_ID, project_code)
@@ -42,141 +63,176 @@ def get_cached_sheet_id(project_code):
         PROJECT_CACHE[project_code] = (sheet_id, now)
     return sheet_id
 
+
 def get_device_type(user_agent):
-    # user_agent = parse(user_agent_string)
-    
     if user_agent.is_mobile:
         return "Mobile"
     elif user_agent.is_tablet:
         return "Tablet"
     elif user_agent.is_pc:
-        return "PC"  # Ensure "PC" is correctly classified
-    else:
-        return "Other" 
+        return "PC"
+    return "Other"
 
+
+def translate_html(html_content: str, target_lang: str):
+    soup = BeautifulSoup(html_content, "html.parser")
+
+    for node in soup.find_all(string=True):
+        parent = node.parent.name
+        if parent in ["script", "style"]:
+            continue
+
+        text = node.strip()
+        if not text:
+            continue
+
+        translated = translate_client.translate(
+            text,
+            source_language="en",
+            target_language=target_lang,
+            format_="text"
+        )
+
+        # ✅ Decode HTML entities
+        clean_text = html.unescape(translated["translatedText"])
+
+        node.replace_with(clean_text)
+
+    return str(soup)
+
+
+# ---------------- ROUTES ----------------
 @app.get("/", response_class=HTMLResponse)
 async def serve_home(request: Request):
     project_code = request.query_params.get("pc")
     session_id = request.query_params.get("id")
-    user_agent_str = request.headers.get("user-agent", "")
-    user_agent = parse(user_agent_str)
-    print(user_agent)
-    
+    lang = request.query_params.get("lang", "en")
+
+    user_agent = parse(request.headers.get("user-agent", ""))
+
     details = {
-        "os": user_agent.os.family,  # e.g., Windows, macOS, Linux
-        "os_version": user_agent.os.version_string,  # e.g., 10, 11, Ventura
-        "browser": user_agent.browser.family,  # e.g., Chrome, Firefox, Safari
-        "browser_version": user_agent.browser.version_string,  # e.g., 110.0.0
-        "device": get_device_type(user_agent),  # e.g., iPhone, Desktop
+        "os": user_agent.os.family,
+        "os_version": user_agent.os.version_string,
+        "browser": user_agent.browser.family,
+        "browser_version": user_agent.browser.version_string,
+        "device": get_device_type(user_agent),
     }
-    print(details)
+
     if not project_code or not session_id:
-        return HTMLResponse(content="<h2>⚠️ Incorrect URL. Please check your URL</h2>", status_code=400)
-    
+        return HTMLResponse("<h2>⚠️ Incorrect URL</h2>", status_code=400)
+
     SPREADSHEET_ID = get_cached_sheet_id(project_code)
     if not SPREADSHEET_ID:
-        return HTMLResponse(content="<h2>⚠️ Project not found. Please check your project code.</h2>", status_code=400)
-    print(f"Updated Global SHEET_ID: {SPREADSHEET_ID}")  # Debugging print
+        return HTMLResponse("<h2>⚠️ Project not found</h2>", status_code=400)
 
-    # Check if OS is iOS and browser is Firefox
-    if details["os"] == "iOS" and "Firefox" in details["browser"] :
+    if details["os"] == "iOS" and "Firefox" in details["browser"]:
         return HTMLResponse(
-            content="<script>alert('⚠️ Browser not supported. Please use Chrome or Safari.');</script>",
+            "<script>alert('⚠️ Please use Chrome or Safari');</script>",
             status_code=400
         )
-    timestamp = datetime.datetime.utcnow().isoformat()  # Get current UTC timestamp
-    ip = f"User accessed home page from {request.client.host}"
-    print(ip)
-    # Call update_logs function to store the log
-    log_response = update_logs(SPREADSHEET_ID,session_id, timestamp, details,{request.client.host})
-    try:
-        fs_log_activity(
-            project_code=project_code,
-            session_id=session_id,
-            timestamp=timestamp,
-            details=details,
-            client_ip={request.client.host} # Passing the set just like you do for sheets
-        )
-    except Exception as e:
-        print(f"⚠️ Parallel Log Failed: {e}")
 
-    print("Inside Home Function")
-    if not project_code or not session_id:
-        return HTMLResponse(content="<h2>⚠️ Incorrect URL. Please check your URL</h2>", status_code=400)
+    timestamp = datetime.datetime.utcnow().isoformat()
+    update_logs(SPREADSHEET_ID, session_id, timestamp, details, {request.client.host})
+
+    try:
+        fs_log_activity(project_code, session_id, timestamp, details, {request.client.host})
+    except Exception as e:
+        print("Firestore log failed:", e)
 
     if not check_session_exists(SPREADSHEET_ID, "URLs", session_id):
-        return HTMLResponse(content="<h2>⚠️ Incorrect URL. Please check your URL</h2>", status_code=400)  
+        return HTMLResponse("<h2>⚠️ Invalid session</h2>", status_code=400)
 
     resume_state = get_last_answered_index(SPREADSHEET_ID, "URLs", session_id)
-    print("LAI",resume_state)
+
     if resume_state["phase"] == "complete":
         update_status_to_responded(SPREADSHEET_ID, session_id)
-        return HTMLResponse(content="<h2>✅ You have answered all prompts and questions. Thank you!</h2>")
+        return HTMLResponse("<h2>✅ All questions completed. Thank you!</h2>")
 
-    with open("templates/prompts.html", "r") as file:
-        html_content = file.read()
 
-    js_state_injection = f"""
-    const resumeState = {json.dumps(resume_state)};
-    """
 
-    html_content = html_content.replace("// {{INJECT_START_STATE}}", js_state_injection)
+
+
+    # ---- LOAD HTML ----
+    with open("templates/prompts.html", "r", encoding="utf-8") as f:
+        html_content = f.read()
+
+    # ---- INJECT JS STATE (IMPORTANT) ----
+    js_state = f"const resumeState = {json.dumps(resume_state)};"
+    html_content = html_content.replace("// {{INJECT_START_STATE}}", js_state)
+
+    # ---- TRANSLATE IF REQUIRED ----
+    
+
     return HTMLResponse(content=html_content)
 
+# ---------------- API ROUTES (UNCHANGED) ----------------
 @app.get("/prompts_and_questions")
-def get_prompts(project_code: str = Query(...)):
-    try:
-        print("In prompts function pc =", project_code)
-        SPREADSHEET_ID = get_cached_sheet_id(project_code)
-        if not SPREADSHEET_ID:
-            raise HTTPException(status_code=400, detail="Spreadsheet ID not set.")
-        print("SPREADSHEET_ID is:", SPREADSHEET_ID)
+def get_prompts(
+    project_code: str = Query(...),
+    lang: str = Query("en")
+):
+    SPREADSHEET_ID = get_cached_sheet_id(project_code)
+    if not SPREADSHEET_ID:
+        raise HTTPException(status_code=400, detail="Spreadsheet not found")
 
-        # 1. Fetch ALL questions ONE time
-        all_questions = get_all_questions_from_sheet(SPREADSHEET_ID, ALL_QUESTIONS_SHEET)
+    all_questions = get_all_questions_from_sheet(SPREADSHEET_ID, ALL_QUESTIONS_SHEET, lang)
 
-        # 2. Build the lists correctly
-        prompts_list = []
-        questions_list = []
-        current_list = prompts_list
+    prompts, questions = [], []
+    prompt_idx = question_idx = 0
+    current = prompts
 
-        prompt_data_index = 0    
-        question_data_index = 0 
+    for q in all_questions:
+        q = q.copy()  # IMPORTANT: avoid mutating original
 
-        for q in all_questions:
-            item_type = q.get("Type", "").strip().lower()
+        t = q.get("Type", "").lower()
 
-            if item_type == "prompt":
-                q['data_index'] = prompt_data_index
-                current_list.append(q)
-                prompt_data_index += 1
-            
-            elif item_type == "followup":
-                current_list = questions_list  
-                q['data_index'] = question_data_index 
-                current_list.append(q)
-                question_data_index += 1
-            
-            elif item_type == "pagebreak":
-                q['data_index'] = -1 
-                current_list.append(q)
         
-        # 3. Get Additional/Instruction
-        additional_questions_raw = get_additional_questions_from_sheet(SPREADSHEET_ID, ALL_QUESTIONS_SHEET)
-        additional_questions = {pid: [q["Questions"] for q in qs if "Questions" in q] for pid, qs in additional_questions_raw.items()}
-            
-        instruction_row = get_instruction_from_sheet(SPREADSHEET_ID, ALL_QUESTIONS_SHEET)
-        instructions = instruction_row["Questions"] if instruction_row and "Questions" in instruction_row else ""
         
-        # 4. Return the new, correct lists
-        return {
-            "prompts": prompts_list, 
-            "questions": questions_list, 
-            "instructions": instructions, 
-            "additional_questions": additional_questions
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+
+        if t == "prompt":
+            q["data_index"] = prompt_idx
+            prompt_idx += 1
+            current = prompts
+
+        elif t == "followup":
+            q["data_index"] = question_idx
+            question_idx += 1
+            current = questions
+
+        elif t == "pagebreak":
+            q["data_index"] = -1
+
+        current.append(q)
+
+    # -------- ADDITIONAL QUESTIONS --------
+    additional_raw = get_additional_questions_from_sheet(SPREADSHEET_ID, ALL_QUESTIONS_SHEET, lang)
+    additional = {}
+
+    for pid, qs in additional_raw.items():
+        translated_qs = []
+        for q in qs:
+            text = q.get("Questions", "")
+            
+            translated_qs.append(text)
+        additional[pid] = translated_qs
+
+    # -------- INSTRUCTIONS --------
+    instruction = get_instruction_from_sheet(SPREADSHEET_ID, ALL_QUESTIONS_SHEET, lang)
+    instruction_text = instruction.get("Questions", "") if instruction else ""
+
+    
+
+    return {
+        "prompts": prompts,
+        "questions": questions,
+        "instructions": instruction_text,
+        "additional_questions": additional
+    }
+
+
+
+
+
 
 @app.post("/save_audio")
 async def save_audio(
@@ -328,4 +384,17 @@ async def send_mail( project_code: str = Form(...),session_id: str = Form(...),)
 
     return
 
+
+@app.get("/available_languages")
+def available_languages(project_code: str):
+    spreadsheet_id = get_sheet_id_from_master(
+        MASTER_SPREADSHEET_ID, project_code
+    )
+
+    if not spreadsheet_id:
+        raise HTTPException(status_code=400, detail="Project not found")
+
+    return {
+        "languages": get_available_languages(spreadsheet_id)
+    }
 

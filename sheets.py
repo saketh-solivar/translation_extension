@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import pickle
 import google.auth
@@ -8,6 +9,10 @@ from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 import gspread
 from google.oauth2.service_account import Credentials
+
+from googleapiclient.discovery import build
+from google.oauth2 import service_account
+import os
 # import pandas as pd
 from helperfunctions import find_session_row, get_prompt_column_index, get_aqg_column_index, get_question_column_index, convert_to_column_letter
 
@@ -18,102 +23,191 @@ SERVICE_ACCOUNT_FILE = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
 creds = Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=SCOPES)
 client = gspread.authorize(creds)
 
-def get_sheet_id_from_master(MASTER_SPREADSHEET_ID,project_code):
-    """
-    Retrieves the spreadsheet ID corresponding to the given project code from the master sheet.
-    """
-    try:
-        # Open the master spreadsheet
-        master_sheet = client.open_by_key(MASTER_SPREADSHEET_ID)
-        worksheet = master_sheet.get_worksheet(0)  # Assuming data is in the first worksheet
+def get_sheet_id_from_master(master_sheet_id, project_code):
+    service = get_sheets_service()
 
-        # Convert sheet data to DataFrame
-        data = worksheet.get_all_records()
-        # df = pd.DataFrame(data)
+    result = service.spreadsheets().values().get(
+        spreadsheetId=master_sheet_id,
+        range="Sheet1"   # your tab name (confirmed)
+    ).execute()
 
-        # Search for the spreadsheet ID corresponding to the project code
-        # row = df.loc[df["Project Code"] == project_code, "SheetId"]
-
-        # if not row.empty:
-        #     return row.iloc[0]  # Return the first matched SheetId
-        # else:
-        #     print("Project code not found in master sheet.")
-        #     return None
-
-        # Search for the spreadsheet ID corresponding to the project code
-        for record in data:
-            if record.get("Project Code") == project_code:
-                return record.get("SheetId")
-
-        print("Project code not found in master sheet.")
+    rows = result.get("values", [])
+    if not rows:
+        print("DEBUG: MASTER sheet is empty")
         return None
 
-    except Exception as e:
-        print(f"Error retrieving spreadsheet ID: {e}")
-        return None
+    headers = rows[0]
+
+    # Match EXACT headers from your sheet
+    project_code_idx = headers.index("Project Code")
+    sheet_id_idx = headers.index("SheetId")
+
+    for row in rows[1:]:
+        if len(row) <= max(project_code_idx, sheet_id_idx):
+            continue
+
+        if row[project_code_idx].strip().lower() == project_code.strip().lower():
+            print("DEBUG: MATCH FOUND →", row[sheet_id_idx])
+            return row[sheet_id_idx]
+
+    print("DEBUG: NO MATCH FOUND FOR", project_code)
+    return None
+
+
 
 # Load Google Sheets API credentials
+SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
+
 def get_sheets_service():
-    SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
-    creds = None
+    creds = service_account.Credentials.from_service_account_file(
+        os.environ["GOOGLE_APPLICATION_CREDENTIALS"],
+        scopes=SCOPES
+    )
+    return build("sheets", "v4", credentials=creds)
 
-    # The file token.pickle stores the user's access and refresh tokens, and is
-    # created automatically when the authorization flow completes for the first time.
-    if os.path.exists('token.pickle'):
-        with open('token.pickle', 'rb') as token:
-            creds = pickle.load(token)
-    
-    # If there are no (valid) credentials available, let the user log in.
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            # creds, _ = google.auth.load_credentials_from_file('credentials.json', SCOPES)
-            creds, _ = google.auth.load_credentials_from_file(os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"), SCOPES)
-        
-        # Save the credentials for the next run
-        with open('token.pickle', 'wb') as token:
-            pickle.dump(creds, token)
-    
-    service = build('sheets', 'v4', credentials=creds)
-    return service
-
-# Unified function to fetch all questions from the new AllQuestions sheet
-def get_all_questions_from_sheet(spreadsheet_id, sheet_name="AllQuestions"):
+def ensure_language_column(spreadsheet_id, sheet_name, lang):
+    """
+    Ensures PromptID_HTML_<lang> column exists.
+    If not, creates it and returns False.
+    """
     service = get_sheets_service()
     sheet = service.spreadsheets()
-    result = sheet.values().get(spreadsheetId=spreadsheet_id, range=sheet_name).execute()
-    values = result.get('values', [])
+
+    
+
+    headers = sheet.values().get(
+        spreadsheetId=spreadsheet_id,
+        range=f"{sheet_name}!1:1"
+    ).execute().get("values", [[]])[0]
+
+    if lang == "en":
+        return "Questions", True
+
+    lang_col = f"Questions_{lang}"
+
+    if lang_col in headers:
+        return lang_col, True
+
+    headers.append(lang_col)
+
+    # Update header row
+    sheet.values().update(
+        spreadsheetId=spreadsheet_id,
+        range=f"{sheet_name}!1:1",
+        valueInputOption="RAW",
+        body={"values": [headers]}
+    ).execute()
+
+    # FORCE reload the updated header row
+    new_header = sheet.values().get(
+        spreadsheetId=spreadsheet_id,
+        range=f"{sheet_name}!1:1"
+    ).execute().get("values", [[]])[0]
+
+    return lang_col, False
+
+
+
+
+
+from google.cloud import translate_v2 as translate
+translate_client = translate.Client()
+
+def get_all_questions_from_sheet(
+    spreadsheet_id,
+    sheet_name="AllQuestions",
+    lang="en"
+):
+    service = get_sheets_service()
+    sheet = service.spreadsheets()
+
+    # Get full sheet
+    result = sheet.values().get(
+        spreadsheetId=spreadsheet_id,
+        range=sheet_name
+    ).execute()
+
+    values = result.get("values", [])
     if not values:
         return []
+
     headers = values[0]
-    data = [dict(zip(headers, row + [""] * (len(headers) - len(row)))) for row in values[1:]]
+    rows = values[1:]
+
+    # Ensure language column
+    lang_col, exists = ensure_language_column(spreadsheet_id, sheet_name, lang)
+
+    # 🔴 RELOAD headers (this was missing)
+    headers = sheet.values().get(
+        spreadsheetId=spreadsheet_id,
+        range=f"{sheet_name}!1:1"
+    ).execute().get("values", [[]])[0]
+
+    base_idx = headers.index("Questions")
+    lang_idx = headers.index(lang_col)
+
+
+    updated_rows = []
+    data = []
+
+    for i, row in enumerate(rows):
+        row += [""] * (len(headers) - len(row))
+        base_text = row[base_idx]
+        lang_text = row[lang_idx]
+
+        # 🔹 Translate only if needed
+        if lang != "en" and not lang_text.strip():
+            translated = translate_client.translate(
+                base_text,
+                source_language="en",
+                target_language=lang,
+                format_="text"
+            )
+            lang_text = translated["translatedText"]
+            row[lang_idx] = lang_text
+            updated_rows.append((i + 2, row))  # sheet row index
+
+        row_dict = dict(zip(headers, row))
+        row_dict["Questions"] = lang_text if lang != "en" else base_text
+        data.append(row_dict)
+
+    # 🔹 Persist translations back to sheet (ONLY ONCE)
+    if updated_rows:
+        for row_num, row_vals in updated_rows:
+            sheet.values().update(
+                spreadsheetId=spreadsheet_id,
+                range=f"{sheet_name}!A{row_num}",
+                valueInputOption="RAW",
+                body={"values": [row_vals]}
+            ).execute()
+
     return data
+
     
-def get_instruction_from_sheet(spreadsheet_id, sheet_name="AllQuestions"):
+def get_instruction_from_sheet(spreadsheet_id, sheet_name="AllQuestions", lang="en"):
     """
     Returns the first row with Type == 'Instruction', or None if not found.
     """
-    all_questions = get_all_questions_from_sheet(spreadsheet_id, sheet_name)
+    all_questions = get_all_questions_from_sheet(spreadsheet_id, sheet_name, lang)
     for q in all_questions:
         if q.get("Type", "").strip().lower() == "instruction":
             return q
     return None
 
 # Fetch only main prompts
-def get_prompts_from_sheet(spreadsheet_id, sheet_name="AllQuestions"):
-    all_questions = get_all_questions_from_sheet(spreadsheet_id, sheet_name)
+def get_prompts_from_sheet(spreadsheet_id, sheet_name="AllQuestions", lang="en"):
+    all_questions = get_all_questions_from_sheet(spreadsheet_id, sheet_name, lang)
     return [q for q in all_questions if q.get("Type", "").strip().lower() == "prompt"]
 
 # Fetch only follow-up questions (Type == 'FollowUp')
-def get_questions_from_sheet(spreadsheet_id, sheet_name="AllQuestions"):
-    all_questions = get_all_questions_from_sheet(spreadsheet_id, sheet_name)
+def get_questions_from_sheet(spreadsheet_id, sheet_name="AllQuestions", lang="en"):
+    all_questions = get_all_questions_from_sheet(spreadsheet_id, sheet_name, lang)
     return [q for q in all_questions if q.get("Type", "").strip().lower() == "followup"]
 
 
 # Fetch additional questions, grouped by PromptID
-def get_additional_questions_from_sheet(spreadsheet_id, sheet_name="AllQuestions"):
-    all_questions = get_all_questions_from_sheet(spreadsheet_id, sheet_name)
+def get_additional_questions_from_sheet(spreadsheet_id, sheet_name="AllQuestions", lang="en"):
+    all_questions = get_all_questions_from_sheet(spreadsheet_id, sheet_name, lang)
     additional_q_map = {}
     for q in all_questions:
         if q.get("Type", "").strip().lower() == "additional":
@@ -125,6 +219,9 @@ def get_additional_questions_from_sheet(spreadsheet_id, sheet_name="AllQuestions
                 additional_q_map[prompt_id] = []
             additional_q_map[prompt_id].append(q)
     return additional_q_map
+
+
+
 
 
 def check_session_exists(spreadsheet_id, sheet_name, session_id):
@@ -455,4 +552,42 @@ def update_logs(spreadsheet_id,session_id, timestamp, details,client_IP):
     except Exception as e:
         print("error",str(e))
         return {"status": "error", "message": str(e)}
+
+import gspread
+from google.oauth2.service_account import Credentials
+import os
+
+
+def get_available_languages(spreadsheet_id: str):
+    creds = Credentials.from_service_account_file(
+        os.environ["GOOGLE_APPLICATION_CREDENTIALS"],
+        scopes=["https://www.googleapis.com/auth/spreadsheets"]
+    )
+
+    client = gspread.authorize(creds)
+    worksheet = client.open_by_key(spreadsheet_id).worksheet("AllQuestions")
+
+    headers = worksheet.row_values(1)
+
+    languages = [
+        {"code": "en", "label": "English"}
+    ]
+
+    for col in headers:
+        if col.startswith("Questions_"):
+            lang_code = col.replace("Questions_", "").lower()
+
+            # ❌ skip HTML column explicitly
+            if lang_code == "html":
+                continue
+
+            languages.append({
+                "code": lang_code,
+                "label": lang_code.upper()
+            })
+
+    return languages
+
+
+
     
