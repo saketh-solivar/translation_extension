@@ -6,36 +6,44 @@ def find_session_row(rows, session_id):
     return None
 
 def get_prompt_column_index(headers, prompt_index):
-    """Finds column index of Response{prompt_index}"""
-    header = f"Response{prompt_index}"
-    if header in headers:
-        return headers.index(header)
-    raise ValueError(f"{header} not found in headers.")
+    # Convert 0-based JS index → 1-based sheet column
+    column_number = prompt_index + 1
+    column_name = f"Response{column_number}"
+
+    if column_name not in headers:
+        raise ValueError(f"{column_name} not found in headers.")
+
+    return headers.index(column_name) + 1
 
 def get_aqg_column_index(headers, prompt_index, additional_index):
-    """Finds the AQGResponseN column for given prompt and AQG number"""
-    # First, locate where Response{prompt_index} starts
-    prompt_header = f"Response{prompt_index}"
-    if prompt_header not in headers:
-        raise ValueError(f"{prompt_header} not found in headers.")
+    """
+    Finds the AQGResponse_P{prompt}_{aqg} column.
+    Converts 0-based indices from frontend to 1-based sheet columns.
+    """
 
-    start_index = headers.index(prompt_header)
-    aqg_count = 0
+    prompt_number = prompt_index + 1
+    aqg_number = additional_index + 1
 
-    for i in range(start_index, len(headers)):
-        if headers[i].startswith("AQGResponse"):
-            aqg_count += 1
-            if aqg_count == additional_index:
-                return i
+    target_header = f"AQGResponse_P{prompt_number}_{aqg_number}"
 
-    raise ValueError(f"AQGResponse {additional_index} for Prompt {prompt_index} not found.")
+    if target_header not in headers:
+        raise ValueError(f"{target_header} not found in headers.")
+
+    return headers.index(target_header) + 1
 
 def get_question_column_index(headers, question_index):
-    """Finds the column index of QResponseN"""
-    header = f"QResponse{question_index}"
-    if header in headers:
-        return headers.index(header)
-    raise ValueError(f"{header} not found in headers.")
+    """
+    Finds the QResponseN column.
+    Converts 0-based index to 1-based.
+    """
+
+    question_number = question_index + 1
+    header = f"QResponse{question_number}"
+
+    if header not in headers:
+        raise ValueError(f"{header} not found in headers.")
+
+    return headers.index(header) + 1
 
 def convert_to_column_letter(col_index):
     """Converts 0-based index to Excel A1 column letter"""

@@ -43,7 +43,7 @@ MASTER_SPREADSHEET_ID = '1t0bzj8EAYi_5VNfUmv9lonSa8VxD1UU8c-Z3jlfXJ3c'
 ALL_QUESTIONS_SHEET = 'AllQuestions'
 RESPONSE_RANGE = 'URLs!A1:ZZ'
 
-BUCKET_NAME = "userrecordings"
+BUCKET_NAME = "sl_userrecordings"
 storage_client = storage.Client(project="story-legacy-442314")
 translate_client = translate.Client()
 
