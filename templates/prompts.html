@@ -5,6 +5,69 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Story Legacy</title>
     <style>
+                /* ===== Modern Header Layout ===== */
+        .header-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: linear-gradient(90deg, rgb(69,205,239), #6c63ff);
+            padding: 20px 40px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+
+        .logo {
+            font-size: 32px;
+            font-weight: bold;
+            color: white;
+        }
+
+        /* ===== Country Dropdown Styling ===== */
+        .country-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+        }
+
+        .country-wrapper label {
+            font-size: 14px;
+            color: white;
+            margin-bottom: 5px;
+            font-weight: 600;
+        }
+
+        #langSelect {
+            padding: 10px 16px;
+            font-size: 15px;
+            border-radius: 25px;
+            border: none;
+            outline: none;
+            background-color: white;
+            color: #333;
+            min-width: 220px;
+            cursor: pointer;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+            transition: all 0.3s ease;
+        }
+
+        /* Hover Effect */
+        #langSelect:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(0,0,0,0.2);
+        }
+
+        /* Focus Effect */
+        #langSelect:focus {
+            box-shadow: 0 0 0 3px rgba(108,99,255,0.4);
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .header-bar {
+                flex-direction: column;
+                gap: 15px;
+                text-align: center;
+            }
+        }
         body {
             font-family: Arial, sans-serif;
             margin: 0;
@@ -61,16 +124,31 @@
             font-size: 22px;
             line-height: 1.6;
         }
+        #langSelect {
+            padding: 8px 12px;
+            font-size: 16px;
+            border-radius: 5px;
+            border: 2px solid #6c63ff;
+            background-color: white;
+            cursor: pointer;
+            min-width: 200px;
+        }
+        #langSelect option {
+            padding: 8px;
+            font-size: 16px;
+        }
     </style>
 </head>
 
 <body>
-<header>Story Legacy</header>
+<header class="header-bar">
+    <div class="logo">Story Legacy</div>
 
-<div style="margin:20px;text-align:right;">
-  <label for="langSelect"><b>Language:</b></label>
-  <select id="langSelect"></select>
-</div>
+    <div class="country-wrapper">
+        <label for="langSelect">🌍 Country</label>
+        <select id="langSelect"></select>
+    </div>
+</header>
 
 
 
@@ -187,6 +265,48 @@
         document.getElementById("instructionModal").style.display = "none";
     };
 
+    
+    
+
+    function getCountryLanguageName(langCode) {
+    const countryLanguageMap = {
+        'en': '🇺🇸 United States',
+        'es': '🇪🇸 Spain',
+        'fr': '🇫🇷 France',
+        'de': '🇩🇪 Germany',
+        'it': '🇮🇹 Italy',
+        'pt': '🇵🇹 Portugal',
+        'pt-br': '🇧🇷 Brazil',
+        'zh': '🇨🇳 China',
+        'zh-cn': '🇨🇳 China',
+        'zh-tw': '🇹🇼 Taiwan',
+        'ja': '🇯🇵 Japan',
+        'ko': '🇰🇷 South Korea',
+        'ar': '🇸🇦 Saudi Arabia',
+        'hi': '🇮🇳 India',
+        'te': '🇮🇳 India (Telugu)',
+        'ta': '🇮🇳 India (Tamil)',
+        'kn': '🇮🇳 India (Kannada)',
+        'ml': '🇮🇳 India (Malayalam)',
+        'ru': '🇷🇺 Russia',
+        'nl': '🇳🇱 Netherlands',
+        'pl': '🇵🇱 Poland',
+        'tr': '🇹🇷 Turkey',
+        'th': '🇹🇭 Thailand',
+        'vi': '🇻🇳 Vietnam',
+        'id': '🇮🇩 Indonesia',
+        'sv': '🇸🇪 Sweden',
+        'no': '🇳🇴 Norway',
+        'da': '🇩🇰 Denmark',
+        'fi': '🇫🇮 Finland',
+        'el': '🇬🇷 Greece',
+        'he': '🇮🇱 Israel',
+        'uk': '🇺🇦 Ukraine'
+    };
+
+    return countryLanguageMap[langCode.toLowerCase()] || langCode.toUpperCase();
+}
+
     async function loadLanguages() {
   const params = new URLSearchParams(window.location.search);
   const projectCode = params.get("pc");
@@ -201,7 +321,8 @@
   data.languages.forEach(lang => {
     const option = document.createElement("option");
     option.value = lang.code;
-    option.textContent = lang.label;
+    const countryLanguageName = getCountryLanguageName(lang.code);
+    option.textContent = countryLanguageName;
     if (lang.code === currentLang) option.selected = true;
     select.appendChild(option);
   });
@@ -217,6 +338,107 @@ window.onload = async () => {
   await loadLanguages();
   await initializeSession();
 };
+
+// ---------------- AUDIO RECORDING LOGIC ----------------
+
+let mediaRecorder;
+let audioChunks = [];
+let recordedBlob = null;
+
+async function startRecording() {
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+        mediaRecorder = new MediaRecorder(stream);
+        audioChunks = [];
+
+        mediaRecorder.ondataavailable = event => {
+            if (event.data.size > 0) {
+                audioChunks.push(event.data);
+            }
+        };
+
+        mediaRecorder.onstop = async () => {
+            recordedBlob = new Blob(audioChunks, { type: "audio/webm" });
+
+            const audioURL = URL.createObjectURL(recordedBlob);
+            const audioPlayer = document.getElementById("audioPlayer");
+            audioPlayer.src = audioURL;
+            audioPlayer.hidden = false;
+
+            document.getElementById("erase").style.display = "inline-block";
+
+            await uploadAudio();
+        };
+
+        mediaRecorder.start();
+
+        document.getElementById("start").style.display = "none";
+        document.getElementById("stop").style.display = "inline-block";
+
+    } catch (err) {
+        alert("Microphone access denied or not supported.");
+        console.error(err);
+    }
+}
+
+function stopRecording() {
+    if (mediaRecorder && mediaRecorder.state !== "inactive") {
+        mediaRecorder.stop();
+    }
+
+    document.getElementById("stop").style.display = "none";
+    document.getElementById("start").style.display = "inline-block";
+}
+
+function eraseRecording() {
+    const audioPlayer = document.getElementById("audioPlayer");
+    audioPlayer.src = "";
+    audioPlayer.hidden = true;
+
+    recordedBlob = null;
+    audioChunks = [];
+
+    document.getElementById("erase").style.display = "none";
+}
+
+// ---------------- UPLOAD TO BACKEND ----------------
+
+async function uploadAudio() {
+    if (!recordedBlob) return;
+
+    const project_code = getQueryParameter("pc");
+    const session_id = getQueryParameter("id");
+
+    const formData = new FormData();
+    formData.append("file", recordedBlob);
+    formData.append("project_code", project_code);
+    formData.append("session_id", session_id);
+    formData.append("prompt_index", currentPromptIndex);
+    formData.append("file_extension", "webm");
+    formData.append("is_prompt", isPromptPhase);
+    formData.append("is_additional", false);
+    formData.append("additional_index", 0);
+    formData.append("duration_seconds", 0);
+
+    try {
+        const response = await fetch("/save_audio", {
+            method: "POST",
+            body: formData
+        });
+
+        const result = await response.json();
+
+        if (result.error) {
+            console.error(result.error);
+            alert("Upload failed.");
+        } else {
+            console.log("Audio uploaded successfully.");
+        }
+    } catch (err) {
+        console.error("Upload error:", err);
+    }
+}
 </script>
 
 </body>

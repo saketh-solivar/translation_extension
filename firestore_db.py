@@ -9,14 +9,14 @@ import json
 
 # Ensure we only initialize once
 if not firebase_admin._apps:
-    # Load credentials from env var (Cloud Run passes secret content as env var value)
-    creds_data = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
-    if creds_data and creds_data.startswith('{'):
+    # Load credentials from env var (Cloud Run passes secret mounted at this path)
+    creds_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+    if creds_path and creds_path.startswith('{'):
         # Parse JSON string from env var
-        cred = credentials.Certificate(json.loads(creds_data))
+        cred = credentials.Certificate(json.loads(creds_path))
     else:
         # Fallback: try loading from file path
-        cred = credentials.Certificate(creds_data)
+        cred = credentials.Certificate(creds_path)
     firebase_admin.initialize_app(cred)
 
 db = firestore.client()

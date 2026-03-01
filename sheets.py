@@ -13,12 +13,13 @@ from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from google.oauth2 import service_account
 import os
+from babel.core import Locale
 # import pandas as pd
 from helperfunctions import find_session_row, get_prompt_column_index, get_aqg_column_index, get_question_column_index, convert_to_column_letter
 
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets","https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 
-# Load credentials from env var (Cloud Run passes secret content as env var value)
+# Load credentials from env var (Cloud Run passes secret mounted at this path)
 creds_data = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
 if creds_data and creds_data.startswith('{'):
     # Parse JSON string from env var
@@ -76,10 +77,16 @@ def get_sheets_service():
             json.loads(creds_data),
             scopes=SCOPES
         )
-    else:
-        # Fallback: try loading from file path
+    elif creds_data:
+        # It's a file path
         creds = service_account.Credentials.from_service_account_file(
             creds_data,
+            scopes=SCOPES
+        )
+    else:
+        # Fall back to default location
+        creds = service_account.Credentials.from_service_account_file(
+            "/code/credentials.json",
             scopes=SCOPES
         )
     return build("sheets", "v4", credentials=creds)
@@ -251,8 +258,13 @@ def check_session_exists(spreadsheet_id, sheet_name, session_id):
     Check if the session ID exists in the given Google Sheet.
     """
     try:
-        creds = Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=["https://www.googleapis.com/auth/spreadsheets"])
-        # creds = Credentials.from_service_account_file("credentials.json", scopes=["https://www.googleapis.com/auth/spreadsheets"])
+        creds_data = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+        if creds_data and creds_data.startswith('{'):
+            creds = Credentials.from_service_account_info(json.loads(creds_data), scopes=["https://www.googleapis.com/auth/spreadsheets"])
+        elif creds_data:
+            creds = Credentials.from_service_account_file(creds_data, scopes=["https://www.googleapis.com/auth/spreadsheets"])
+        else:
+            creds = Credentials.from_service_account_file("/code/credentials.json", scopes=["https://www.googleapis.com/auth/spreadsheets"])
         client = gspread.authorize(creds)
         worksheet = client.open_by_key(spreadsheet_id).worksheet(sheet_name)
 
@@ -615,9 +627,17 @@ def get_available_languages(spreadsheet_id: str):
             if lang_code == "html":
                 continue
 
+            # Use babel to get the language name
+            try:
+                locale = Locale.parse(lang_code, sep='-')
+                label = locale.get_display_name('en').title()
+            except:
+                # Fallback to language code in uppercase if babel fails
+                label = lang_code.upper()
+            
             languages.append({
                 "code": lang_code,
-                "label": lang_code.upper()
+                "label": label
             })
 
     return languages

@@ -29,6 +29,7 @@ firebase-admin
 google-cloud-firestore
 google-cloud-translate==2.0.1 
 beautifulsoup4
+babel
 
 google-auth
 google-auth-oauthlib
@@ -38,3 +39,4 @@ google-cloud-storage
 google-cloud-firestore
 google-cloud-translate==2.0.1
 beautifulsoup4
+babel
